@@ -1,0 +1,152 @@
+<!-- Set PArameters Module -->
+<!-- Set the chnkPrefix to make all chunks unique in the overall folder -->
+```{r, echo=TRUE, eval=TRUE, warning=FALSE}
+chnkPrefix <- "load.files."
+VersionPdfExt <- VersionPdfExt <- paste0(".",chnkPrefix,"V", gsub("-", "", Sys.Date()), ".pdf")
+
+```
+
+## Data Preparation
+### Load Design File
+```{r, echo=TRUE, eval=TRUE, warning=FALSE, results="asis"}
+###############################################################################
+## Load design file                                                          ##
+
+
+Obio@projectDetailList$designFN <- "design/experimental.design.file.txt"
+Obio@projectDetailList$designFN
+
+if (file.exists(Obio@projectDetailList$designFN)){
+    dfDesign <- read.delim(
+        Obio@projectDetailList$designFN, 
+        sep = "\t",
+        stringsAsFactors = F
+    )    
+} else {
+    stop("No design file specified")
+}
+
+
+
+library(dplyr)
+dfDesign <- dfDesign %>%
+  mutate(timepoint = as.numeric(timepoint)) %>%
+  arrange(dataseries, timepoint, f_replicate, .by_group = TRUE)  
+
+dfDesign <- data.frame(dfDesign)
+
+## The order of samples in dfDesign will determine the display order in viewers ##
+## Arranging samples according to display order ##
+
+
+Obio@dfDesign <- data.frame(dfDesign)
+
+##                                                                           ##
+###############################################################################
+```
+
+
+### Load TPM File
+```{r, echo=TRUE, eval=TRUE, warning=FALSE, results="asis"}
+
+###############################################################################
+## Load TPM/count file                                                       ##
+
+Obio <- biologicSeqTools2::addTPMorFPKMtable(
+        obj = Obio,
+        addTPM = TRUE,
+        addFPKM = FALSE
+)
+
+Obio@projectDetailList$TpmTableFN <- paste0("../data/",Obio@projectDetailList$project_id, ".TPM.table.txt")
+if (!dir.exists("../data")){
+    dir.create("../data")
+}
+
+write.table(Obio@dfTPM, Obio@projectDetailList$TpmTableFN, row.names = F, sep = "\t")
+
+
+
+if (!is.null(Obio@projectDetailList$TpmTableFN) && file.exists(Obio@projectDetailList$TpmTableFN)){
+    dfTPM <- read.delim(
+        Obio@parameterList$count_table, 
+        sep = "\t",
+        stringsAsFactors = F
+    )    
+} else {
+    stop("No design file specified")
+}
+
+
+
+dfTPM <- dfTPM[rowSums(dfTPM[,2:ncol(dfTPM)]) != 0,]
+
+head(dfTPM)
+# 
+Obio@dfTPM <- dfTPM
+
+
+designSampleIDs <- c(Obio@parameterList$primaryAlignmentGeneID, unique(Obio@dfDesign$sample.id))
+dfTPMSampleIDs <- unique(names(Obio@dfTPM))
+checkTPM <- gsub("_TPM", "", dfTPMSampleIDs[dfTPMSampleIDs != "gene_id"])
+check <- !(designSampleIDs %in% checkTPM)
+
+if (sum(check) > 0){
+  stop("Sample IDs in dfDesign don't match the column names in the count file or TPM file gene identifier column is not correct.")
+}
+
+##                                                                           ##
+###############################################################################
+
+```
+
+
+### Load RSEM raw count matrix
+```{r, echo=TRUE, eval=TRUE, warning=FALSE, results="asis"}
+
+if (!is.null(Obio@parameterList$RSEMcountDataFile)){
+    RSEMcountDataFile <- Obio@parameterList$RSEMcountDataFile
+} else {
+    RSEMcountDataFile <- paste0(
+            Obio@parameterList$localWorkDir,
+            "RSEM/",
+            Obio@parameterList$project_id, 
+            ".count.data.txt"
+)
+}
+
+ 
+
+#RSEMcountDataFile 
+
+dfRSEM <- biologicSeqTools2::readAndPrepareCountMatrix(
+    count.data.fn = RSEMcountDataFile ,
+    string.to.be.deleted.in.raw.counts.columns = "",
+    df.design = Obio@dfDesign
+)
+
+
+
+Obio@RSEMcountMatrix <- dfRSEM
+
+
+
+```
+
+
+### Load Model 
+```{r, echo=TRUE, eval=TRUE, warning=FALSE, results="asis"}
+
+FN <- "design/dge.model.table.txt"
+
+dfModel <- read.delim(
+    FN, 
+    stringsAsFactors = F, 
+    sep = "\t"
+)
+
+Obio@dfModel <- dfModel
+
+
+
+```

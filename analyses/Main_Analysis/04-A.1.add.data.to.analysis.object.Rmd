@@ -1,0 +1,257 @@
+<!-- Set PArameters Module -->
+<!-- Set the chnkPrefix to make all chunks unique in the overall folder -->
+```{r, echo=TRUE, eval=TRUE, warning=FALSE}
+chnkPrefix <- "add.data"
+VersionPdfExt <- VersionPdfExt <- paste0(".",chnkPrefix,"V", gsub("-", "", Sys.Date()), ".pdf")
+
+```
+
+
+
+
+```{r, echo=F, eval=T, warning=FALSE}
+
+###############################################################################
+## Essential bits                                                            ##
+###############################################################################
+
+
+###############################################################################
+## Add Design file and check                                                 ##
+
+if (!is.null(Obio@projectDetailList$designFN)){
+    dfDesign <- read.delim(
+        Obio@projectDetailList$designFN, 
+        header =T, 
+        sep = "\t",
+        stringsAsFactors = F
+    )
+    
+    dfDesign[is.na(dfDesign)] <- ""
+} else {
+    stop("Error: Now design file specified")
+}
+
+## Make sure the design file has a sample.group_color column:
+pos <- grep("^sample.group_color$", names(dfDesign))
+
+if (length(pos) == 0){
+    ## Create default ##
+    sample.group <- unique(dfDesign$sample.group)
+    sample.group_color <- sample.group
+            #library(scales)
+    sample.group_color = scales::hue_pal()(length(sample.group_color))
+            #sample.group_color = c("#990000", "#009900")
+    
+    ## set sample group colors manually
+    
+    dfGroupColors <- unique(data.frame(sample.group, sample.group_color))
+    dfDesign <- merge(dfDesign, dfGroupColors, by.x = "sample.group", "sample.group")
+    
+}
+
+
+
+## Add: check for essential columns ##
+Obio@dfDesign <- data.frame(NULL)
+Obio@dfDesign <- dfDesign
+
+##                                                                           ##
+###############################################################################
+
+###############################################################################
+## Add model file and check                                                 ##
+if (!is.null(Obio@projectDetailList$modelFN)){
+    dfModel <- read.delim(
+        Obio@projectDetailList$modelFN, 
+        header =T, 
+        sep = "\t",
+        stringsAsFactors = F
+    )
+    dfModel[is.na(dfModel)] <- ""
+    Obio@dfModel <- data.frame(NULL)
+    Obio@dfModel <- dfModel
+} 
+
+## Add: check for essential columns ##
+
+
+##                                                                           ##
+###############################################################################
+
+###############################################################################
+## Optional section - if available                                           ##
+###############################################################################
+
+###############################################################################
+## Add rsem file and check                                                   ##
+# if (!is.null(Obio@projectDetailList$countTableFN)){
+#     dfCount <- read.delim(
+#         Obio@projectDetailList$countTableFN, 
+#         header =T, 
+#         sep = "\t",
+#         stringsAsFactors = F
+#     )
+# } else {
+#     print("Count file not found")
+# }
+
+
+###############################################################################
+## Add rsem file if available                                                 ##
+if (!is.null(Obio@parameterList$countTableFN)){
+    dfRSEM <- read.delim(
+        Obio@parameterList$countTableFN, 
+        header =T, 
+        sep = "\t",
+        stringsAsFactors = F
+    )
+    
+    
+    names(dfRSEM) <- gsub("^X$", "gene_id", names(dfRSEM))
+    names(dfRSEM) <- gsub("^x$", "gene_id", names(dfRSEM))
+    names(dfRSEM) <- gsub(paste0("^",Obio@parameterList$primaryAlignmentGeneID, "$"), "gene_id", names(dfRSEM))
+    
+    row.names(dfRSEM) <- dfRSEM$gene_id
+    
+    dfRSEM$gene_id <- NULL
+    
+    selVec <- names(dfRSEM)
+    selVec <- selVec[selVec %in% Obio@dfDesign$sample.id]
+    dfRSEM <- dfRSEM[,selVec]
+    
+    Obio@RSEMcountMatrix <- data.matrix(round(dfRSEM))
+    
+    
+    designSampleIDs <- unique(Obio@dfDesign$sample.id)
+    dfRsemSampleIDs <- unique(colnames(Obio@RSEMcountMatrix))
+    check <- !(designSampleIDs %in% dfRsemSampleIDs)
+
+    if (sum(check) > 0){
+        stop("Sample IDs in dfDesign don't match the column names in the count file")
+    } else {
+        print("RSEM file not (correctly) specified")
+    }
+}
+
+
+## Done                                                                      ##
+###############################################################################
+
+
+
+###############################################################################
+## Add tpm file if available                                                 ##
+if (!is.null(Obio@projectDetailList$TpmTableFN)){
+    dfTPM <- read.delim(
+        Obio@projectDetailList$TpmTableFN, 
+        header =T, 
+        sep = "\t",
+        stringsAsFactors = F
+    )
+    
+    names(dfTPM) <- gsub("^X$", "gene_id", names(dfTPM))
+    names(dfTPM) <- gsub("^x$", "gene_id", names(dfTPM))
+    names(dfTPM) <- gsub(paste0("^",Obio@parameterList$primaryAlignmentGeneID, "$"), "gene_id", names(dfTPM))
+    
+    selVec <- names(dfTPM)
+    selVec <- selVec[selVec != "gene_id"]
+    
+    ## Remove all samples from dfTPM that are not present in the design file specifications
+    selVec <- selVec[selVec %in% dfDesign$sample.id]
+    
+    dfTPM <- dfTPM[rowSums(dfTPM[,selVec]) != 0,]
+
+    Obio@dfTPM <- dfTPM
+
+
+    designSampleIDs <- unique(Obio@dfDesign$sample.id)
+    dfTPMSampleIDs <- gsub("_TPM", "",unique(names(Obio@dfTPM)))
+    check <- !(designSampleIDs %in% dfTPMSampleIDs)
+
+    if (sum(check) > 0){
+      stop("Sample IDs in dfDesign don't match the column names in the count file")
+    }
+    
+    
+
+} else {
+    print("TPM file not specified")
+}
+
+
+## Done                                                                      ##
+###############################################################################
+
+###############################################################################
+## Check provided PCA file                                                   ##
+if (!is.null(Obio@projectDetailList$PcaFN)){
+    if (file.exists(Obio@projectDetailList$PcaFN)){
+        dfPCA <- read.delim(
+            Obio@projectDetailList$PcaFN, 
+            header=T, 
+            sep="\t", 
+            stringsAsFactors = F
+        )
+        
+        pos <- c(
+            grep("^sample.id$", names(dfPCA)),
+            grep("^sample_id$", names(dfPCA))
+        )
+        
+        if (length(pos) == 0){
+            Obio@projectDetailList$dfPcaFN <- NULL
+            print("Provided PCA file not valid. The sample.id column is missing. Will use default calculation.")
+        } 
+        
+        pos <- c(
+            grep("^sample.group$", names(dfPCA)),
+            grep("^sample_group$", names(dfPCA))
+        )
+        
+        if (length(pos) == 0){
+            Obio@projectDetailList$dfPcaFN <- NULL
+            print("Provided PCA file not valid. The sample.group column is missing. Will use default calculation.")
+        } 
+        
+        pos <- c(
+            grep("^PC1$", names(dfPCA)),
+            grep("^PC2$", names(dfPCA))
+        )
+        
+        if (length(pos) != 2){
+            Obio@projectDetailList$dfPcaFN <- NULL
+            print("Provided PCA file not valid. Check format of PCx columns. It should be PC1, PC2, ... Will use default calculation.")
+        } 
+        
+        if (!is.null(Obio@projectDetailList$dfPcaFN)){
+            selVec <- c(
+                "sample.id",
+                "sample_id",
+                "sample.group",
+                "sample_group",
+                names(dfPCA)[grep("^PC", names(dfPCA))]
+            )
+            
+            selVec <- selVec[selVec %in% names(dfPCA)]
+            dfPCA <- dfPCA[,selVec]
+            names(dfPCA) <- gsub("\\.", "_", names(dfPCA))
+            Obio@dfPCA <- data.frame(NULL)
+            Obio@dfPCA <- dfPCA
+        }
+        
+    } # End if file.exists
+} # End dfPcaFN not null
+
+## Done                                                                      ##
+###############################################################################
+
+###############################################################################
+## Add DGE files, if available                                               ##
+
+
+## Done                                                                      ##
+###############################################################################
+
+```
+

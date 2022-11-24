@@ -1,0 +1,14 @@
+book_filename: "bookdown-demo"
+language:
+  ui:
+    chapter_name: "Chapter "
+delete_merged_file: true
+before_chapter_script: ["load.biologic.robj.R"]
+after_chapter_script: ["save.biologic.robj.R"]
+
+## This will switch to K-M rendering https://bookdown.org/yihui/bookdown/new-session.html
+new_session: yes
+# This is to be used if only some of the markdown files are to be used in the
+# report.
+#rmd_files: ["01-intro.Rmd", "02-literature.Rmd"]
+

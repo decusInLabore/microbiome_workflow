@@ -1,0 +1,516 @@
+---
+title: "Cluster Definitions"
+author: "Stefan Boeing"
+date: 'Compiled: `r format(Sys.Date(), "%B %d, %Y")`'
+
+output: 
+    html_document:
+        code_folding: hide
+        df_print: tibble
+        highlight: default
+        theme: paper
+        toc: true
+        toc_depth: 5
+        toc_float: true
+        css:
+
+always_allow_html: yes
+
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+    tidy = TRUE,
+    tidy.opts = list(width.cutoff = 120),
+    message = FALSE,
+    warning = FALSE
+)
+```
+
+```{bash init, eval=F, echo=T}
+## R version for this analysis 
+# module purge;source /camp/stp/babs/working/software/modulepath_new_software_tree_2018-08-13;module load pandoc/2.2.3.2-foss-2016b;ml R/4.0.3-foss-2020a
+
+```
+
+## Prepare Data
+
+
+
+```{r, eval=TRUE, echo=F, results=F}
+
+## libraries ##
+#library(tidyverse)
+
+#library(scales)
+
+VersionPdfExt <- paste0(".V", gsub("-", "", Sys.Date()), ".pdf")
+
+if (dir.exists("/Volumes/babs/working/boeings/")){
+    hpc.mount <- "/Volumes/babs/working/boeings/"
+} else if (dir.exists("Y:/working/boeings/")){
+    hpc.mount <- "Y:/working/boeings/"
+} else if (dir.exists("/camp/stp/babs/working/boeings/")){
+    hpc.mount <- "/camp/stp/babs/working/boeings/"
+} else {
+    hpc.mount <- ""
+}
+
+## Loading the BABS password ##
+#if (upload.results.to.database){
+    FN <- paste0(hpc.mount, "Projects/reference_data/pwd_folder/babs.txt")
+    dbTable <- read.delim(
+      FN,
+      header = F,
+      sep = "\t",
+      stringsAsFactors = F
+    )
+#}
+db.pwd <- as.vector(dbTable[1,1])
+
+###############################################################################
+##                                                                           ##
+# if (!requireNamespace("remotes")){
+#     install.packages("remotes")
+# }
+
+
+
+if (file.exists("renv.lock")){
+    renv::restore(prompt = FALSE)
+} else {
+    renv::init()
+}
+
+# remotes::install_github("rstudio/renv")
+# renv::install("rstudio/renv")
+## Done                                                                      ##
+###############################################################################
+
+#install.packages("remotes")
+# renv::install("decusInLabore/biologicSeqTools2")
+# renv::install("decusInLabore/biologicToolsSC")
+# renv::install("decusinlabore/biologicViewerSC")
+
+library(Seurat)
+library(tidyverse)
+library(biologicSeqTools2)
+library(biologicToolsSC)
+
+
+# source("assets/R/scTools.r")
+# source("assets/R/SBwebtools.pckg.r")
+
+ObioFN <- paste0("../", list.files("..")[grep(".bioLOGIC.Robj", list.files(".."))])
+
+if (file.exists(ObioFN)){
+    load(paste0(ObioFN))
+    print(paste0("Obio object ", Obio@parameterList$localWorkDir, ObioFN, " exists and is loaded."))
+} else {
+    exit()
+}
+
+## Reset paths to local environment
+Obio <- Obio %>% 
+    biologicSeqTools2::setMountingPoint()  %>% 
+    biologicSeqTools2::setAnalysisPaths() %>% 
+    biologicSeqTools2::setCrickGenomeAndGeneNameTable() %>% 
+    biologicSeqTools2::createAnalysisFolders() %>% 
+    biologicSeqTools2::setDataBaseParameters()
+
+
+
+
+## Load Seurat object
+SeuratFN <- paste0(Obio@parameterList$localWorkDir,list.files(Obio@parameterList$localWorkDir)[grep(".Seurat.Robj", list.files(Obio@parameterList$localWorkDir))])
+
+
+if (file.exists(SeuratFN)){
+    load(SeuratFN)
+    print(paste0("Obio object ", Obio@parameterList$localWorkDir,SeuratFN, " exists and is loaded."))
+    
+} else {
+    exit()
+}
+
+figureCount <- 1
+
+## Rename Seurat object
+OsC_CF <- OsC
+
+
+```
+
+
+## Do Dimensionality Reduction 
+```{r, echo=TRUE, eval=TRUE, warning=FALSE, results=FALSE} 
+###############################################################################
+## Perform integrated analysis                                               ##
+
+if (length(Obio@sampleDetailList) > 1){
+    DefaultAssay(OsC_CF) <- "integrated"
+} else {
+    Obio@parameterList$singleCellClusterString <- gsub("integrated", "RNA", Obio@parameterList$singleCellClusterString)
+    DefaultAssay(OsC_CF) <- "RNA"
+}
+
+OsC_CF <- FindVariableFeatures(
+    object = OsC_CF,
+    selection.method = 'vst', 
+    nfeatures = Obio@parameterList$NtopGenes
+)
+# Run the standard workflow for visualization and clustering
+## This will scale on the most variable features only
+OsC_CF <- ScaleData(OsC_CF, verbose = FALSE)
+
+
+redVec <- names(OsC_CF@reductions)
+
+
+if (!("pca" %in% redVec )){
+    OsC_CF <- RunPCA(
+        OsC_CF, 
+        npcs = Obio@parameterList$singleCellSeuratNpcs4PCA, verbose = FALSE
+    )
+}
+# t-SNE and Clustering
+
+## Add PCA clusters to data collection ##
+
+if (!("umap" %in% redVec )){
+    OsC_CF <- RunUMAP(OsC_CF, reduction = "pca", dims = 1:Obio@parameterList$singleCellSeuratNpcs4PCA)
+}
+
+# if (!("tsne" %in% redVec )){
+# OsC_CF <- RunTSNE(OsC_CF, reduction = "pca", dims = 1:Obio@parameterList$singleCellSeuratNpcs4PCA)
+# }
+
+
+OsC_CF <- FindNeighbors(OsC_CF, reduction = "pca", dims = 1:Obio@parameterList$singleCellSeuratNpcs4PCA)
+```
+
+
+```{r, echo=TRUE, eval=TRUE, warning=FALSE, results=FALSE} 
+OsC_CF2 <- OsC_CF
+
+clusterOptionVec <- c(0.2,0.3,0.4, 0.5,0.7,0.9, 1,1,1.3,1.5, 1.7,1.9, 2.1,2.3,2.5)
+
+
+
+# Find clusters using a range of resolutions
+OsC_CF2 <- Seurat::FindClusters(object = OsC_CF2, resolution = clusterOptionVec)
+
+
+## Make plot 
+
+
+tag <- "Clustertree"
+
+plotList <- list()
+chnkVec <- as.vector(NULL, mode = "character")
+
+## Calling the package is essental for the clustree function to work. 
+library(clustree)
+
+plotList[[tag]] <- clustree::clustree(
+    OsC_CF2, 
+    edge_width = 0.5,
+    node_label_size  = 1.5,
+    node_size_range  = c(1, 8)) + 
+  ggplot2::theme_bw()  +  
+  ggplot2::theme(
+    axis.text.y   = ggplot2::element_blank(),
+    axis.text.x   = ggplot2::element_blank(),
+    axis.title.y  = ggplot2::element_blank(),
+    axis.title.x  = ggplot2::element_blank(),
+    axis.ticks.x= ggplot2::element_blank(),
+    axis.ticks.y= ggplot2::element_blank(),
+    axis.line = ggplot2::element_line(colour = "black"),
+    panel.border = ggplot2::element_rect(colour = "black", fill=NA, size=1),
+    plot.title = ggplot2::element_text(hjust = 0.5, size = 12),
+    legend.title = ggplot2::element_blank()
+)
+
+## Save to file ##
+FNbase <- paste0("clusterplot.", tag,".", VersionPdfExt)
+FN <- paste0(Obio@parameterList$reportFigDir, FNbase)
+FNrel <- paste0("report_figures/", FNbase)
+
+pdf(FN)
+    print(plotList[[tag]])
+dev.off()
+
+figLegend <- paste0(
+    "**Figure ", 
+    figureCount, 
+    ":** ",
+    "Cells per cluster at various cluster resolutions. Download a pdf of this figure [here](", FNrel,")."
+)
+
+figureCount <- figureCount + 1
+
+NewChnk <- paste0(
+    "### ",tag,
+    "\n```{r D_",tag,", results='asis', echo=F, eval=TRUE, warning=FALSE, fig.cap='",
+    figLegend,"'}\n",
+    "\n",
+    "\n print(plotList[['",tag,"']])",
+    "\n cat(  '\n')",
+    "\n\n\n```\n"   
+)
+
+chnkVec <- c(
+    chnkVec,
+    NewChnk
+)
+
+
+
+rm(OsC_CF2)
+
+if (length(plotList) > 3){
+    tabVar <- ".tabset .tabset-fade .tabset-dropdown"
+} else {
+    tabVar <- ".tabset .tabset-fade .tabset-pills"
+}
+
+```
+
+
+## Clustertree{`r tabVar`}
+
+```{r, echo=TRUE, eval=TRUE, warning=FALSE, results="asis"} 
+
+cat(paste(knitr::knit(text = chnkVec, quiet = T), collapse = '\n'))
+
+```
+
+
+```{r populate_expr_database_1, eval=TRUE, echo=F, results=F}
+if (length(Obio@sampleDetailList) > 1){
+    DefaultAssay(OsC_CF) <- "integrated"
+    tagString <- "integrated"
+} else {
+    Obio@parameterList$singleCellClusterString <- gsub("integrated", "RNA", pattern = Obio@parameterList$singleCellClusterString)
+    DefaultAssay(OsC_CF) <- "RNA"
+    tagString <- "RNA"
+}
+
+
+
+
+plotList <- list()
+chnkVec <- as.vector(NULL, mode = "character")
+# reductionVec <- c("umap", "tsne")
+reductionVec <- c("umap")
+j =1
+
+for (i in 1:length(clusterOptionVec)){
+    OsC_CF <- FindClusters(OsC_CF, resolution = clusterOptionVec[i])
+    names(OsC_CF@meta.data) <- gsub("\\.", "_", names(OsC_CF@meta.data))
+## Rational: Run PCA on variable features, then scale data for heatmaps and other applications
+    allGenes <- rownames(x = OsC_CF@assays$RNA)
+    OsC_CF <- ScaleData(OsC_CF, verbose = FALSE, features=allGenes)
+    
+    tag <- paste0("Clusterplot_all", "_",i,"_",gsub("[.]", "_", clusterOptionVec[i]))
+    
+    # Temporarily switched off 
+    plotList[[tag]] <- DimPlot(OsC_CF, reduction = reductionVec[j], group.by = "seurat_clusters",label = TRUE)
+    
+    
+    ## Save to file ##
+    FNbase <- paste0("clusterplot.", tag,".", VersionPdfExt)
+    FN <- paste0(Obio@parameterList$reportFigDir, FNbase)
+    FNrel <- paste0("report_figures/", FNbase)
+    
+    pdf(FN)
+        print(plotList[[tag]])
+    dev.off()
+    
+    figLegend <- paste0(
+        "**Figure ", 
+        figureCount, 
+        "A:** ",
+        reductionVec[j],
+        " Clusterplot with parameter ",clusterOptionVec[i]," [here](", FNrel,")."
+    )
+    
+    
+    NewChnk <- paste0(
+        "### ",tag,
+        "\n```{r D_",tag,", results='asis', echo=F, eval=TRUE, warning=FALSE, fig.cap='",
+        figLegend,"'}\n",
+        "\n",
+        "\n print(plotList[['",tag,"']])",
+        "\n cat(  '\n')",
+        "\n\n\n```\n"   
+    )
+    
+    chnkVec <- c(
+        chnkVec,
+        NewChnk
+    )
+    
+    ## with split by sample ##
+    # tag <- paste0("Clusterplot_by_sample",  "_",i,"_", gsub("[.]", "_", clusterOptionVec[i]))
+    # 
+    # plotList[[tag]] <- DimPlot(OsC_CF, reduction = reductionVec[j], group.by = gsub("\\.", "_", paste0(tagString , "_snn_res.", clusterOptionVec[i])),label = TRUE, split.by = "sampleID")
+    # 
+    # 
+    # ## Save to file ##
+    # FNbase <- paste0(tag,".", VersionPdfExt)
+    # FN <- paste0(Obio@parameterList$reportFigDir, FNbase)
+    # FNrel <- paste0("report_figures/", FNbase)
+    # 
+    # pdf(FN)
+    #     print(plotList[[tag]])
+    # dev.off()
+    # 
+    # figLegend <- paste0(
+    #     "**Figure ", 
+    #     figureCount, 
+    #     "B:** ",
+    #     reductionVec[j],
+    #     " Clusterplot with parameter ",clusterOptionVec[j]," [here](", FNrel,")."
+    # )
+    # 
+    # 
+    # NewChnk <- paste0(
+    #     "\n```{r Dimplot_by_sample_",tag,", results='asis', echo=F, eval=TRUE, warning=FALSE, fig.cap='",
+    #     figLegend,"'}\n",
+    #     "\n",
+    #     "\n print(plotList[['",tag,"']])",
+    #     "\n cat(  '\n')",
+    #     "\n\n\n```\n"   
+    # )
+    # 
+    # chnkVec <- c(
+    #     chnkVec,
+    #     NewChnk
+    # )
+    # 
+    ## Add cluster dendrogram ##
+    
+    
+  #   tag <- paste0("Cluster_dendrogram" , "_",i,"_",gsub("[.]", "_", clusterOptionVec[i]))
+  #   
+  #   Idents(OsC_CF) <- "seurat_clusters"
+  #   OsC_CF <- BuildClusterTree(OsC_CF)
+  #   OsC_CF@tools$BuildClusterTree$tip.label <- OsC_CF@tools$BuildClusterTree$tip.label
+  #   
+  #   library(ggtree)
+  #   plotList[[tag]]  <- ggplot(OsC_CF@tools$BuildClusterTree) + geom_tree() + theme_tree() + labs(title=tag
+  #   ) +  theme(
+  #     panel.border = element_rect(colour = "black", fill=NA, size=1),
+  #     axis.title.x=element_blank(),
+  #     plot.title = element_text(hjust = 0.5, size = 12)
+  #   ) 
+  #   ## Color by cluster ##
+  #   plotList[[tag]] <- plotList[[tag]] + geom_tiplab()   
+  #   
+  # ## Done ##
+  #   
+  #   
+  #   
+  #   #+ xlim(-1,1.2*max(OsC_CF@tools$BuildClusterTree$edge)) 
+  #   
+  #   
+  #   ## Save to file ##
+  #   FNbase <- paste0("clusterdendro.", tag,".", VersionPdfExt)
+  #   FN <- paste0(Obio@parameterList$reportFigDir, FNbase)
+  #   FNrel <- paste0("report_figures/", FNbase)
+  #   
+  #   pdf(FN)
+  #       print(plotList[[tag]])
+  #   dev.off()
+  #   
+  #   figLegend <- paste0(
+  #       "**Figure ", 
+  #       figureCount, 
+  #       "A:** ",
+  #       reductionVec[j],
+  #       " Clusterplot dendrogram with parameter ",clusterOptionVec[i]," [here](", FNrel,")."
+  #   )
+  #   
+  #   
+  #   NewChnk <- paste0(
+  #       "### ",tag,
+  #       "\n```{r Clusterdendro_",tag,", results='asis', echo=F, eval=TRUE, warning=FALSE, fig.cap='",
+  #       figLegend,"'}\n",
+  #       "\n",
+  #       "\n print(plotList[['",tag,"']])",
+  #       "\n cat(  '\n')",
+  #       "\n\n\n```\n"   
+  #   )
+  #   
+  #   chnkVec <- c(
+  #       chnkVec,
+  #       NewChnk
+  #   )
+    
+    
+    figureCount <- figureCount + 1
+    
+}
+
+## Save cluster patterns for featureView ##
+dfMeta <- OsC_CF@meta.data
+
+selVec <- c(
+    "cellID",
+    names(dfMeta)[grep("_res_", names(dfMeta))]
+)
+
+dfMeta <- dfMeta[,selVec]
+
+selVec2 <- c(
+    names(dfMeta)[grep("_res_", names(dfMeta))]
+)
+
+for (i in 1:length(selVec2)){
+    dfMeta[,selVec2[i]] <- paste0("C", dfMeta[,selVec2[i]] )
+}
+
+
+names(dfMeta) <- gsub(paste0(tagString, "_snn_res_"), "ClusterTestRes_",names(dfMeta))
+names(dfMeta) <- gsub(paste0(tagString, "_rnn_res_"), "ClusterTestRes_",names(dfMeta))
+
+tempDir <- paste0(Obio@parameterList$localWorkDir,"temp")
+            if(!dir.exists(tempDir)){
+                dir.create(tempDir)
+            }
+
+FN <- paste0(Obio@parameterList$localWorkDir, "temp/ClusterFinder.output.txt")
+write.table(
+    dfMeta,
+    FN,
+    row.names = F, 
+    sep = "\t"
+)
+
+if (length(plotList) > 3){
+    tabVar <- ".tabset .tabset-fade .tabset-dropdown"
+} else {
+    tabVar <- ".tabset .tabset-fade .tabset-pills"
+}
+
+```
+
+
+
+
+```{r Plot_tsne_data_plotting, echo=TRUE, eval=TRUE, warning=FALSE, results="asis"} 
+# Temporarily not used
+# cat(paste(knit(text = chnkVec, quiet = T), collapse = '\n'))
+
+```
+
+
+
+
+## Documentation
+```{r documentation, eval=TRUE, echo=T, results=T}
+
+sessionInfo()
+```

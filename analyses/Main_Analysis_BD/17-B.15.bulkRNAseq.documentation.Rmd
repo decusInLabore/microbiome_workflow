@@ -1,0 +1,49 @@
+<!-- Set Parameters Module -->
+<!-- Set the chnkPrefix to make all chunks unique in the overall folder -->
+```{r docu_module, echo=FALSE, eval=TRUE, warning=FALSE}
+chnkPrefix <- "B15.Documentation."
+VersionPdfExt <- VersionPdfExt <- paste0(".",chnkPrefix,"V", gsub("-", "", Sys.Date()), ".pdf")
+
+```
+
+# Project Summary
+
+
+```{r display_text_2, eval=T, results="asis"}
+cat(paste0('## Check Positive Controls - Individual Genes','\n','\n',
+'In order to get an overview over your latest sequencing results, you might want to look for the performance of individual genes that may serve as a positive control. You can do this by entering an official gene name into the search box in the  [GeneView section](https://biologic.crick.ac.uk/',Obio@parameterList$project_id,'/gene-view). Genes that were detected in this experiment will be suggested to you after starting to type. If a gene is not suggested, it was not detected in this experiment. The gene result on display will give you information on the amount of reads detected for the gene in question (TPM value plot. TPM values give you read-counts, normalized for the gene length and the library size - see slideshow for a detailed definition).','\n','\n',
+           
+'## Check Positive Controls - Gene Categories
+Next you may wish to view your latest dataset through the lens of a gene category that captures all genes relevant to the process you are investigating. A number of gene categories represented in your experiment can be found in the CategoryView section, lower panel. Reference categories are organized by category class and for most reference category a weblink is given to inform you about the origin of that gene category dataset (Category Description column). Click to the category name in order to view the performance of the genes in that category in the context of your experiment. You will be presented by default with a heatmap, but you may change this to a 2D scatterplot in which the category genes are highlighted by using the pull-down menu given underneath the heatmap depiction. In addition, a table is given informing you about the log-fold changes recorded for genes in this category. You may click on individual tiles in the heatmap to be taken to the individual results for the gene.','\n','\n',
+           
+'It might make sense to review your data in the context of results your lab has obtained in the past or in the context of published data. In order to that bioinformatics will add gene categories to either your lab categories selection or to the selection "this experiment" in CategoryView, lower table.','\n','\n',
+           
+'## Result Table Download',
+'\n','\n',
+
+'<a href="report_tables/"',Obio@parameterList$project_id,'_GSEA.xlsx"  target="_blank">Download Result Table</a>','\n','\n',
+'<a href="report_tables/"',Obio@parameterList$project_id,'.result.table.xlsx"  target="_blank">Download Metacore Input File</a>','\n','\n',
+
+
+'## Bioinformatics Method Summary ','\n',
+'Sequencing was performed on an ',Obio@parameterList$machine,' machine. The "Trim Galore!" utility version 0.4.2 was used to remove sequencing adaptors and to quality trim individual reads with the q-parameter set to 20 (1). Then sequencing reads were aligned to the mouse genome and transcriptome (Ensembl ', Obio@parameterList$genome, Obio@parameterList$release,') using RSEM version 1.3.0 (2) in conjunction with the STAR aligner version 2.5.2 (3). Sequencing quality of individual samples was assessed using FASTQC version 0.11.5 (4) and RNA-SeQC version 1.1.8 (5). Differential gene expression was determined using the R-bioconductor package DESeq2 version 1.14.1(6,7). Gene set enrichment analysis (GSEA) was conducted as described in Subramanian et al (8).','\n','\n',
+           
+           
+           
+'REF 1: https://www.bioinformatics.babraham.ac.uk/projects/trim_galore/ (retrieved 03-05-2017)','\n','\n',
+           
+'REF 2: Bo Li and Colin N Dewey (2011). RSEM: accurate transcript quantification from RNA-Seq data with or without a reference genome. BMC Bioinformatics 12:323','\n','\n',
+           
+'REF 3 : Dobin A, Davis CA, Schlesinger F, Drenkow J, Zaleski C, Jha S, Batut P, Chaisson M and Gineras TR. (2012) STAR: ultrafast universal RNASEQ aligner. Bioinformatics. 29. 15-21','\n','\n',
+           
+'REF 4: https://www.bioinformatics.babraham.ac.uk/projects/fastqc/ (retrieved 03-05-2017)','\n','\n',
+           
+'REF 5: DeLuca et al (2012). RNA-SeQC: RNA-seq metrics for quality control and process optimization. Bioinformatics (28) 1530-1532','\n','\n',
+           
+'REF 6: Love MI, Huber W and Anders S (2014). Moderated estimation of fold change and dispersion for RNA-seq data with DESeq2. Genome Biology, 15, pp. 550.','\n','\n',
+           
+'REF 7: R Development Core Team (2008). R: A language and environment for statistical computing. R Foundation for Statistical Computing, Vienna, Austria. ISBN 3-900051-07-0, URL http://www.R-project.org.','\n','\n',
+           
+'REF 8: Subramanian et al.(2005), Gene set enrichment analysi: A knowledge-based approach for interpreting genome-wide expression profiles. PNAS (43) 15545-15550.','\n','\n'
+))
+```

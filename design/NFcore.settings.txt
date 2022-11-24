@@ -1,0 +1,17 @@
+sample,fastq_1,fastq_2,strandedness
+WT_0h_1,/camp/stp/babs/working/boeings/Projects/boeings/stefan.boeing/491_demo_timecourse_GSE134515/FASTQ_files/SRR9710732.fastq.gz,,reverse
+WT_0h_2,/camp/stp/babs/working/boeings/Projects/boeings/stefan.boeing/491_demo_timecourse_GSE134515/FASTQ_files/SRR9710733.fastq.gz,,reverse
+WT_2h_1,/camp/stp/babs/working/boeings/Projects/boeings/stefan.boeing/491_demo_timecourse_GSE134515/FASTQ_files/SRR9710734.fastq.gz,,reverse
+WT_2h_2,/camp/stp/babs/working/boeings/Projects/boeings/stefan.boeing/491_demo_timecourse_GSE134515/FASTQ_files/SRR9710735.fastq.gz,,reverse
+WT_8h_1,/camp/stp/babs/working/boeings/Projects/boeings/stefan.boeing/491_demo_timecourse_GSE134515/FASTQ_files/SRR9710736.fastq.gz,,reverse
+WT_8h_2,/camp/stp/babs/working/boeings/Projects/boeings/stefan.boeing/491_demo_timecourse_GSE134515/FASTQ_files/SRR9710737.fastq.gz,,reverse
+WT_24h_1,/camp/stp/babs/working/boeings/Projects/boeings/stefan.boeing/491_demo_timecourse_GSE134515/FASTQ_files/SRR9710738.fastq.gz,,reverse
+WT_24h_2,/camp/stp/babs/working/boeings/Projects/boeings/stefan.boeing/491_demo_timecourse_GSE134515/FASTQ_files/SRR9710739.fastq.gz,,reverse
+KO_0h_1,/camp/stp/babs/working/boeings/Projects/boeings/stefan.boeing/491_demo_timecourse_GSE134515/FASTQ_files/SRR9710740.fastq.gz,,reverse
+KO_0h_2,/camp/stp/babs/working/boeings/Projects/boeings/stefan.boeing/491_demo_timecourse_GSE134515/FASTQ_files/SRR9710741.fastq.gz,,reverse
+KO_2h_1,/camp/stp/babs/working/boeings/Projects/boeings/stefan.boeing/491_demo_timecourse_GSE134515/FASTQ_files/SRR9710742.fastq.gz,,reverse
+KO_2h_2,/camp/stp/babs/working/boeings/Projects/boeings/stefan.boeing/491_demo_timecourse_GSE134515/FASTQ_files/SRR9710743.fastq.gz,,reverse
+KO_8h_1,/camp/stp/babs/working/boeings/Projects/boeings/stefan.boeing/491_demo_timecourse_GSE134515/FASTQ_files/SRR9710744.fastq.gz,,reverse
+KO_8h_2,/camp/stp/babs/working/boeings/Projects/boeings/stefan.boeing/491_demo_timecourse_GSE134515/FASTQ_files/SRR9710745.fastq.gz,,reverse
+KO_24h_1,/camp/stp/babs/working/boeings/Projects/boeings/stefan.boeing/491_demo_timecourse_GSE134515/FASTQ_files/SRR9710746.fastq.gz,,reverse
+KO_24h_2,/camp/stp/babs/working/boeings/Projects/boeings/stefan.boeing/491_demo_timecourse_GSE134515/FASTQ_files/SRR9710747.fastq.gz,,reverse

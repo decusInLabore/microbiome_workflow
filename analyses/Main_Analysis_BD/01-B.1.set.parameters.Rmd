@@ -1,0 +1,116 @@
+```{r set_parameters_init, echo=FALSE, eval=TRUE, warning=FALSE}
+chnkPrefix <- "partB.set.parameters."
+VersionPdfExt <- VersionPdfExt <- paste0(".",chnkPrefix,"V", gsub("-", "", Sys.Date()), ".pdf")
+
+```
+
+
+```{r, echo=FALSE, eval=TRUE, warning=FALSE, results=F}
+
+## Create gene annotation if it is not present ##
+## To be activated ##
+if (is.null(Obio@parameterList$path2GeneIDtable)){
+    dfAnno <- biologicSeqTools2::createGeneNameTable(
+        obj = Obio,
+        biomart = "ENSEMBL_MART_ENSEMBL",
+        selString = "mmusculus_gene_ensembl",
+        host= "http://may2017.archive.ensembl.org",
+        primaryAlignmentGeneID = "ENSMUSG",
+        geneIDcolumn = "mgi_symbol"
+    )
+}
+
+## For now we expect a gene annotation file to be specified already
+Obio <- setCrickGenomeAndGeneNameTable(Obio)
+
+# In the future this will be done using the more general
+# biologicSeqTools2::setGenomeAndGeneNameTable
+# function
+
+## Create analysis folders in the working directory
+Obio <- createAnalysisFolders(
+    Obio
+)
+
+## Set additional parameters
+Obio <- setDataBaseParameters(Obio)
+
+## This can be upgraded to web retrieval of annotation data 
+Obio <- addGeneAnnotation(Obio)
+
+ 
+## Create shiny path for figure outputs ##           
+shinyURL <- paste0(
+    "https://",
+    Obio@parameterList[["shinyBaseServerURL"]],
+    "/shiny/boeings/",
+    Obio@parameterList$project_id,
+    "_app/"
+)            
+        
+    
+
+## Create outputfolders ##
+# if (!dir.exists(paste0(Obio@parameterList$localWorkDir,Obio@parameterList$project_id))){
+#     dir.create(paste0(Obio@parameterList$localWorkDir,Obio@parameterList$project_id))
+# }
+
+Obio@parameterList[["html_local"]] <- paste0(Obio@parameterList$folder, "html_local/")
+
+if (!dir.exists(Obio@parameterList[["html_local"]])){
+    dir.create(Obio@parameterList[["html_local"]])
+}
+
+Obio@parameterList[["reportFigDir"]] <- paste0(Obio@parameterList$html_local, "report_figures/")
+if (!dir.exists(Obio@parameterList$reportFigDir)){
+    dir.create(Obio@parameterList$reportFigDir)
+}
+
+pdfTemp <- paste0(Obio@parameterList$reportFigDir, "temp.pdf")
+
+Obio@parameterList[["reportTableDir"]] <- paste0(Obio@parameterList$html_local, "report_tables/")
+if (!dir.exists(Obio@parameterList$reportTableDir)){
+    dir.create(Obio@parameterList$reportTableDir)
+}
+
+
+## Create data dir
+Obio@parameterList[["data_dir"]] <- paste0(Obio@parameterList$folder, "data/")
+
+if (!dir.exists(Obio@parameterList$data_dir)){
+    dir.create(Obio@parameterList$data_dir)
+}
+
+
+## Set default for database connections ##
+pos <- grep("^host$", names(Obio@dbDetailList))
+if (length(pos) ==0 ){
+    Obio@dbDetailList$host <- NULL
+    
+    if (is.null(Obio@dbDetailList)){
+        Obio@dbDetailList = list("host" = NULL)
+    }
+    
+    upload.results.to.database <- FALSE
+    print("No database server provided. upload.results.to.database set to FALSE")
+    
+}
+
+if (!is.null(Obio@dbDetailList$host)){
+    if (Obio@dbDetailList$host == "10.27.241.234"){
+        urlString <- "biologic.thecrick.org"
+    } else {
+        urlString <- "biologic.crick.ac.uk"
+    }    
+} else {
+    urlString <- ""
+}
+
+
+##                                                                           ##
+###############################################################################
+
+```
+
+
+

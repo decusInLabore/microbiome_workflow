@@ -1,0 +1,75 @@
+<!-- Set the chnkPrefix to make all chunks unique in the overall folder -->
+```{r, echo=FALSE, eval=TRUE, warning=FALSE}
+chnkPrefix <- "NS01-A1."
+VersionPdfExt <- VersionPdfExt <- paste0(".",chnkPrefix,"V", gsub("-", "", Sys.Date()), ".pdf")
+
+```
+
+<!-- In this part we collect project parameters and create a biolgic object -->
+
+```{r, echo=TRUE, eval=TRUE, warning=FALSE, results=F}
+
+###############################################################################
+###############################################################################
+## Create parameter list                                                     ##
+###############################################################################
+###############################################################################
+
+## Set project directory
+projectDir <- gsub("scripts/bulkRNAseq_workflow/analyses/Main_Analysis", "", getwd())
+
+pipelineList <- biologicSeqTools2::assembleBiologicProject(
+  ## Path to the design file. Essential columns: sample.id, sample.group, dataseries. ##
+  ## Ideal sample name: [dataseries]_[sample.group]_[replicate]
+  designFN =  paste0(projectDir, "scripts/bulkRNAseq_workflow/design/design.table.txt"),
+  ## Path to model table ##
+  modelFN =  paste0(projectDir, "scripts/bulkRNAseq_workflow/design/model.table.txt"),
+  ## Path to NFcore setting file. Set to NULL in no-alignment mode.
+  #NFcoreSettingsFN = "/camp/stp/babs/working/boeings/Projects/goulda/adrien.franchet/472A_brains_from_drosophila_larvae_RN21220/workdir/bulkRNAseq_workflow/design/RN21220test.NFcore.samplesheet.file.csv",
+  ## Path to relevant FASTQ files.
+  #pathToSeqStorageFolder = c(
+  #    "/camp/stp/babs/inputs/sequencing/data/goulda/adrien.franchet/RN21220/primary_data/211203_A01366_0104_AH3WVGDMXY/fastq/",
+  #    "/camp/stp/babs/inputs/sequencing/data/goulda/adrien.franchet/RN21220/primary_data/211130_A01366_0101_BH3YWKDMXY/fastq/"
+  #),
+  ## Path to RSEM count table. Essential.
+  countTableFN = paste0(projectDir, "data/rsem.count.txt"),
+  ## Path to TPM table.
+  TpmTableFN =   paste0(projectDir, "data/dfTPM.txt"),
+  biologicSettingsFN = paste0(projectDir, "scripts/bulkRNAseq_workflow/design/biologic.settings.file.csv"),
+  PcaFN =  NULL,
+  #"/camp/stp/babs/working/boeings/Projects/goulda/adrien.franchet/472A_brains_from_drosophila_larvae_RN21220/workdir/data/dfPca.txt",
+  calculate_DGE = TRUE,
+  calculate_LRT = TRUE,
+  ## Path to external DEseq2 output files
+  DEseq2External_DGE = "/camp/stp/babs/working/boeings/Projects/lovellbadger/gunes.taylor/483_vis_E07_E10_E14_merged/data/DEseq2External/",
+  #"/camp/stp/babs/working/boeings/Projects/goulda/adrien.franchet/472A_brains_from_drosophila_larvae_RN21220/workdir/data/DEseq2External_DGE/",
+  DEseq2External_LRT = NULL,
+  #"/camp/stp/babs/working/boeings/Projects/goulda/adrien.franchet/472A_brains_from_drosophila_larvae_RN21220/workdir/data/DEseq2External_LRT/",
+  #stranded = TRUE,
+  #read.length = "100bp",
+  #paired.end = FALSE,
+  #pathToRSEMresultsFiles = paste0("/camp/stp/babs/working/boeings/Projects/goulda/adrien.franchet/472_brains_from_drosophila_larvae_RN21220/workdir/", "RSEM/Ensembl/"),
+  projectFolder = projectDir,
+  experiment_id = "E7E10E14V3",
+  project_name = "Sex Determination in Chicken",
+  lims.id = "RN20094",
+  labname = "Lovell Badge",
+  NtopGenes = 500,
+  experiment.type = "bulk_rna_seq",
+  species = "gallus_gallus",
+  release = "release-95",
+  count.table.headline = "TPM-values for all Samples",
+  count.table.sidelabel = "TPM",
+  heatmap.headline.text = "Heatmap: Row-averaged Expr",
+  designTScol = "f_timepoint",
+  timecourse.units = "Days",
+  primDataDB = "rll_data",
+  db.user = "babs",
+  host = "10.27.241.82",
+  lab.categories.table = "rl_lab_categories",
+  corGeneVec = c("DMRT1", "FOXL2", "SOX9")
+)
+
+
+```
+

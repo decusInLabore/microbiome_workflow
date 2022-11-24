@@ -1,0 +1,366 @@
+<!-- Set Parameters Module -->
+<!-- Set the chnkPrefix to make all chunks unique in the overall folder -->
+```{r, echo=TRUE, eval=TRUE, warning=FALSE}
+chnkPrefix <- "set.parameters."
+VersionPdfExt <- VersionPdfExt <- paste0(".",chnkPrefix,"V", gsub("-", "", Sys.Date()), ".pdf")
+
+```
+
+## Data Preparation
+### Load Design File
+```{r, echo=TRUE, eval=TRUE, warning=FALSE, results="asis"}
+###############################################################################
+## Create biologic Metadata object                                           ##
+
+if (file.exists(pipelineList[["biologicSettingsFN"]])){
+    dfObio <- read.csv(pipelineList[["biologicSettingsFN"]], header = F, stringsAsFactors = F)
+} else {
+    stop("biologic settings file not found.")
+}
+
+
+
+dfObio <- data.frame(t(dfObio), stringsAsFactors = F)
+dfObio[is.na(dfObio)] <- ""
+colnames(dfObio) <- t(dfObio[1,])
+dfObio <- dfObio[-1,]
+
+
+
+for (i in 1:ncol(dfObio)){
+    pos <- grep("#", dfObio[,i], useBytes = TRUE)
+    if (length(pos) > 0){
+        dfObio[pos, i] <- ""
+    }
+}
+
+##                                                                           ##
+###############################################################################
+
+```
+
+```{r, echo=TRUE, eval=TRUE, warning=FALSE, results="asis"}
+
+###############################################################################
+## dbDetailList                                                              ##
+dbDetailList <- list(
+    "primDataDB" = as.vector(dfObio$primDataDB[1]),
+    "ref.cat.db" = as.vector(dfObio$ref.cat.db[1]),
+     "db.user" = as.vector(dfObio$db.user[1]),
+     "host" = as.vector(dfObio$host[1])
+)
+## End dbDetailList                                                          ##
+###############################################################################
+
+###############################################################################
+## Project detail list                                                       ##
+
+fastqFolders <- as.vector(dfObio$fastqFolders)
+fastqFolders <- fastqFolders[fastqFolders != ""]
+lastChr <- sapply(fastqFolders, function(x) substr(x, nchar(x), nchar(x)))
+
+fastqFolders <- ifelse(lastChr != "/", paste0(fastqFolders, "/"), fastqFolders)
+
+corGeneVec <- as.vector(dfObio$corGeneVec)
+
+if (!(is.null(corGeneVec))){
+    corGecorGeneVec <- corGeneVec[corGeneVec != ""]
+}
+
+
+
+projectDetailList <- list(
+
+    "RSEMcountDataFile" = as.vector(dfObio$RSEMcountDataFile[1]),
+    
+    "folder" = as.vector(dfObio$folder[1]),
+    "primaryAlignmentGeneID" = as.vector(dfObio$primaryAlignmentGeneID[1]),
+    "paired.end" =  as.logical(dfObio$paired.end[1]),
+    "stranded" = as.logical(dfObio$stranded[1]),
+    "labname" = as.vector(dfObio$labname[1]),
+    "projectName" = as.vector(dfObio$project_name[1]),
+    "read.length" =  as.vector(dfObio$read.length[1]),
+    
+    
+    
+    "modelFN" = as.vector(dfObio$modelFN[1]),
+    "baseDesignFN" = as.vector(dfObio$baseDesignFN[1]),
+    "TpmTableFN" = as.vector(dfObio$TpmTableFN[1]),
+    "PcaFN" = as.vector(dfObio$PcaFN[1]),
+    
+    "DEseq2_DGE_result_folder" = as.vector(dfObio$DEseq2_DGE_result_folder[1]),
+    "DEseq2_LRT_result_folder" = as.vector(dfObio$DEseq2_LRT_result_folder[1]),
+    
+    "DEseq2External_DGE" = as.vector(dfObio$DEseq2External_DGE[1]),
+    "DEseq2External_LRT" = as.vector(dfObio$DEseq2External_LRT[1]),
+    
+    "calculate_DGE" = as.logical(dfObio$calculate_DGE[1]),
+    "calculate_LRT" = as.logical(dfObio$calculate_LRT[1]),
+    
+    "designFN" = as.vector(dfObio$designFN[1]),
+    "DGEmodelFN" = as.vector(dfObio$DGEmodelFN[1]),
+    "DEseq2betaPrior" = as.logical(dfObio$DEseq2betaPrior[1]),
+    "AlignFASTQcolumn" = as.vector(dfObio$AlignFASTQcolumn[1]),
+    "NtopGenes" = as.vector(dfObio$NtopGenes[1]),
+    "designTScol" = as.vector(dfObio$designTScol[1]),
+    "corGeneVec" = corGeneVec,
+    "batchMode" = as.logical(dfObio$batchMode[1]),
+    "parallelProcessing" = as.logical(dfObio$parallelProcessing[1]),
+    "ModuleFASTQC" = as.vector(dfObio$ModuleFASTQC[1]),
+    "countTableFN" = as.vector(dfObio$countTableFN[1]),
+
+
+    
+    "ModuleTrimGalore" = as.vector(dfObio$ModuleTrimGalore[1]),
+    "TrimGaloreMinLength" = as.vector(dfObio$TrimGaloreMinLength[1]),
+    "TrimGaloreMinQuality" = as.vector(dfObio$TrimGaloreMinQuality[1]),
+
+    "lab.categories.table" = as.vector(dfObio$lab.categories.table[1]), # default NULL
+    "sra.id.vector" = as.vector(dfObio$sra.id.vector[1]),
+    "gse.id.vector" = as.vector(dfObio$gse.id.vector[1]),
+    "lims.id" = as.vector(dfObio$lims.id[1]),
+    "experiment.type" = as.vector(dfObio$experiment.type[1]),   
+    "species" = as.vector(dfObio$species[1]), 
+    "release" = as.vector(dfObio$release[1]), 
+
+    "project_id" = as.vector(dfObio$project_id[1]),
+    "labname" = as.vector(dfObio$labname[1]),
+
+    "timecourse.units" = as.vector(dfObio$timecourse.units[1]),
+    "count.table.headline" = as.vector(dfObio$count.table.headline[1]),
+    "count.table.sidelabel" = as.vector(dfObio$count.table.headline[1]),
+    "heamap.headline.text" = as.vector(dfObio$count.table.headline[1]),
+    "pathToSeqStorageFolder" = fastqFolders
+)
+## End project detail list                                                   ##
+###############################################################################
+
+###############################################################################
+## Project Parameters                                                        ##
+documentationParams <- list(
+
+    "title" = as.vector(dfObio$title[1]),
+    "subtitle" =  as.vector(dfObio$subtitle[1]),
+    "abstract" = as.vector(dfObio$abstract[1])
+
+)
+
+
+## Done Project Params                                                       ##
+###############################################################################
+
+
+
+###############################################################################
+## Reference Table List                                                      ##
+dfRefTab <- dfObio[,grep("referenceTableListDB", names(dfObio))]
+
+referenceTableList = list()
+
+if (ncol(dfRefTab) > 0){
+    for (i in 1:ncol(dfRefTab)){
+        referenceTableList[[as.vector(dfRefTab[1,i])]] <- as.vector(dfRefTab[2,i])
+        
+    }
+## To be added: Check tables against database    
+}
+
+
+
+
+    # mysigdb_sc_sig
+    # cibersort_L22
+    # Allen_Brain_Atlas                            |
+    # CORUM                                        |
+    # ChEA_2016                                    |
+    # DEPOD_phosphatase_substrates                 |
+    # ENCODE_TF_ChIP_seq_2015                      |
+    # GO_Biological_Process_2017                   |
+    #LINCS_L1000_Chem_Pert_down                   |
+    #LINCS_L1000_Chem_Pert_down_backup            |
+    # LINCS_L1000_Chem_Pert_up                     |
+    # LINCS_L1000_Chem_Pert_up_backup              |
+    # NCBI_homologene_table                        |
+    # Old_CMAP_down                                |
+    # Old_CMAP_up                                  |
+    # SGP_from_GEO_up_down_combined                |
+    # SILAC_Phosphoproteomics                      |
+    # TRANSFAC_and_JASPAR_PWMs                     |
+    # UK_Biobank_GWAS                              |
+    # ag_lab_categories                            |
+    # as_lab_categories                            |
+    # bader_lab_hESC_reference                     |
+    # bt_lab_categories                            |
+    # cat_selection_default                        |
+    # cs_lab_categories                            |
+    # da_lab_categories                            |
+    # es_lab_categories                            |
+    # esl111_cat_reference_db_table                |
+    # et_lab_categories                            |
+    # exploration_categories                       |
+    # fg_lab_categories                            |
+    # fi_lab_categories                            |
+    # gk_lab_categories                            |
+    # innateDB_PPI                                 |
+    # jb_lab_categories                            |
+    # js_lab_categories                            |
+    # kn_lab_categories                            |
+    # mysigdb_c1_positional                        |
+    # mysigdb_c2_1329_canonical_pathways           |
+    # mysigdb_c2_KEGG                              |
+    # mysigdb_c2_REACTOME                          |
+    # mysigdb_c2_biocarta                          |
+    # mysigdb_c2_chemical_and_genetic_pertubations |
+    # mysigdb_c3_TF_targets                        |
+    # mysigdb_c3_miRNA_targets 
+# et_lab_categories                            |
+# | exploration_categories                       |
+# | fg_lab_categories                            |
+# | fgl391_cat_reference_db_table                |
+# | fi_lab_categories                            |
+# | gk_lab_categories                            |
+# | innateDB_PPI                                 |
+# | jb_lab_categories                            |
+# | js_lab_categories                            |
+# | kn_lab_categories                            |
+# | mysigdb_c1_positional                        |
+# | mysigdb_c2_1329_canonical_pathways           |
+# | mysigdb_c2_KEGG                              |
+# | mysigdb_c2_REACTOME                          |
+# | mysigdb_c2_biocarta                          |
+# | mysigdb_c2_chemical_and_genetic_pertubations |
+# | mysigdb_c3_TF_targets                        |
+# | mysigdb_c3_miRNA_targets                     |
+# | mysigdb_c5_BP                                |
+# | mysigdb_c5_CC                                |
+# | mysigdb_c5_MF                                |
+# | mysigdb_c6_oncogenic_signatures              |
+# | mysigdb_c7_immunologic_signatures            |
+# | mysigdb_h_hallmarks                          |
+# | networkcategories                            |
+# | nl_lab_categories                            |
+# | pa_lab_categories                            |
+# | pb_lab_categories                            |
+# | pfam_interpro                                |
+# | pp_lab_categories                            |
+# | project_db_table                             |
+# | project_db_table_backup                      |
+# | project_description_table                    |
+# | pt_lab_categories                            |
+# | re_lab_categories                            |
+# | reference_categories_db_new                  |
+# | rl_lab_categories                            |
+# | sb_lab_categories                            |
+# | sc_lab_categories                            |
+# | sl_lab_categories                            |
+# | sl_lab_categories_backup                     |
+# | ss_lab_categories                            |
+# | st_lab_categories                            |
+# | temp_categories                              |
+# | vp_lab_categories                            |
+# | vt_lab_categories
+
+## Done                                                                      ##
+###############################################################################
+
+# Species has to be "mus_musculus", "homo_sapiens", "danio_rerio" 
+# release-86, release-89
+
+## Create defaults ##
+
+
+
+
+Obio = new(
+    "bioLOGIC",
+    documentationParams = documentationParams,
+    dbDetailList = dbDetailList,        
+    projectDetailList = projectDetailList,
+    referenceTableList = referenceTableList,
+    parameterList = projectDetailList
+)
+    #     list(
+    #     "lab.categories.table" = projectDetailList$lab.categories.table, # default NULL
+    #     "folder" = projectDetailList$folder,
+    #     "sra.id.vector" = "",
+    #     "gse.id.vector" = "",
+    #     "lims.id"= as.vector(dfObio$asf.id[1]),
+    #     "asf.id" = as.vector(dfObio$asf.id[1]),
+    #     "machine" = NULL,
+    #     "experiment.type" = projectDetailList$experiment.type,   
+    #     "species" = projectDetailList$species, 
+    #     "release" = projectDetailList$release, 
+    #     "project_id" = projectDetailList$project_id,
+    #     "labname" = projectDetailList$labname,
+    #     
+    #     ## Parameters for full analysis ##
+    #     "RSEMcountDataFile" = as.vector(dfObio$RSEMcountDataFile[1]),
+    #     "sampleID_fileName" = as.vector(dfObio$sampleID_fileName[1]),
+    #     
+    #     ## Parameters for partial analysis ##
+    #     "DESeq2_folder" = as.vector(dfObio$DESeq2_folder[1]),
+    #     "design_file" = as.vector(dfObio$design_file[1]),
+    #     "PCA_results" = as.vector(dfObio$PCA_results[1]),
+    #     "count_table" = as.vector(dfObio$count_table[1]),
+    #     "variable_features" = as.vector(dfObio$variable_features[1]),
+    # 
+    #     
+    #     "db.user" =  dbDetailList$db.user,
+    #     "host" = dbDetailList$host,
+    #     "timecourse.units" = "hrs",
+    #     "count.table.headline" = "lg10 Expr for all Samples",
+    #     "count.table.sidelabel" = "lg10 Expr",
+    #     "heamap.headline.text" = "Heatmap: Row-averaged Expr",
+    #     "loadR" = "module purge;source /camp/stp/babs/working/software/modulepath_new_software_tree_2018-08-13;module load pandoc/2.2.3.2-foss-2016b;ml R/3.6.0-foss-2016b-BABS;R;",
+    #     "pathToSeqStorageFolder" = NULL,
+    #     "addFullTPMtable" = FALSE,
+    #     "hpcMount" = "",
+    #     "parallelProcessing" = FALSE,
+    #     "timeseries" = FALSE,
+    #     referenceTableList = referenceTableList
+    #    
+#    )
+#)
+
+Obio <- biologicSeqTools2::setMountingPoint(Obio)
+Obio <- biologicSeqTools2::setAnalysisPaths(Obio)
+Obio <- biologicSeqTools2::setCrickGenomeAndGeneNameTable(Obio)
+Obio <- biologicSeqTools2::createAnalysisFolders(
+    Obio
+)
+Obio <- biologicSeqTools2::setDataBaseParameters(Obio)
+
+###############################################################################
+## Add annotation file                                                       ##
+
+Obio <- biologicSeqTools2::addGeneAnnotation(Obio)
+
+## Done adding annotation file                                               ##
+###############################################################################
+
+
+
+## Create html local
+## Create outputfolders ##
+Obio@parameterList[["html_local_dir"]] <- paste0(Obio@parameterList$localWorkDir,"html_local", "/")
+if (!dir.exists(Obio@parameterList$html_local_dir)){
+    dir.create(Obio@parameterList$html_local_dir)
+}
+
+
+## Create outputfolders ##
+Obio@parameterList[["reportFigDir"]] <- paste0(Obio@parameterList$localWorkDir,"html_local", "/report_figures/")
+
+if (!dir.exists(Obio@parameterList$reportFigDir)){
+    dir.create(Obio@parameterList$reportFigDir)
+}
+
+## Create outputfolders II ##
+Obio@parameterList[["reportTableDir"]] <- paste0(Obio@parameterList$localWorkDir,"html_local", "/report_tables/")
+
+if (!dir.exists(Obio@parameterList$reportFigDir)){
+    dir.create(Obio@parameterList$reportFigDir)
+}
+
+```
+

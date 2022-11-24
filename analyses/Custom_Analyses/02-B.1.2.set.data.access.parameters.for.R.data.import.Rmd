@@ -1,0 +1,225 @@
+<!-- Set Parameters Module -->
+<!-- Set the chnkPrefix to make all chunks unique in the overall folder -->
+```{r, echo=FALSE, eval=TRUE, warning=FALSE}
+chnkPrefix <- "partB.set.parameters."
+VersionPdfExt <- VersionPdfExt <- paste0(".",chnkPrefix,"V", gsub("-", "", Sys.Date()), ".pdf")
+
+```
+
+
+# Option to Load Data Into R
+## Download variables
+With the parmeters below, you can import the data relating to this RNA-Seq projet directly into a R-session. 
+```{r, echo=F, eval=T, warning=FALSE}
+
+## Check if project access file exists ##
+projectAccessDir <- paste0(Obio@parameterList$workdir, "project_access/")
+projectAccessFile <- paste0(Obio@parameterList$workdir, "project_access/project_access.txt")
+if (file.exists(projectAccessFile)){
+    df <- read.delim(
+        projectAccessFile, 
+        sep = "\t",
+        stringsAsFactors = F
+    )
+    username <- df$username
+    pass <- df$pass
+    
+    
+} else {
+    username <- substr(paste0(Obio@parameterList$project_id,"_da"), 1, 16)
+    sPwd <-c(2:9,letters,LETTERS)
+    pass <- paste(sample(sPwd,8),collapse="")
+    df <- data.frame(username, pass)
+    if (!dir.exists(projectAccessDir)){
+        dir.create(projectAccessDir, recursive = T)
+    }
+    write.table(df, projectAccessFile, row.names=F, sep="\t")
+}
+    
+Obio@dbDetailList[["RaccessUsername"]] <- username
+Obio@dbDetailList[["RaccessPass"]] <- pass
+
+## Assign project tables ##
+## Design
+if (is.null(Obio@parameterList$designdbTableName)){
+  Obio@parameterList$designdbTableName <- paste0(Obio@parameterList$project_id, "_designTable")
+}
+
+designTB <- Obio@parameterList$designdbTableName
+
+
+
+## Main
+if (is.null(Obio@parameterList$rnaseqdbTableName)){
+    Obio@parameterList$rnaseqdbTableName <- paste0(Obio@parameterList$project_id, "_bulk_rna_seq_table")
+}
+mainTB <- Obio@parameterList$rnaseqdbTableName
+## PCA
+if (is.null(Obio@parameterList$PCAdbTableName)){
+    Obio@parameterList$PCAdbTableName <- paste0(Obio@parameterList$project_id, "_PCA")
+}
+pcaTB <- Obio@parameterList$PCAdbTableName
+
+host <- Obio@dbDetailList$host
+db <- Obio@dbDetailList$primDataDB
+designString <- designTB
+mainTBstring <- mainTB
+pcaDbTable <- pcaTB
+## Done installing package                                                   ##
+###############################################################################
+userString <- paste0('username <- "', username,'"')
+passString <- paste0('pass <- "', pass,'"')
+hostString <- paste0('host <- "', host,'"')
+dbString <- paste0('db <- "', db,'"')
+designString <- paste0('designTB <- "', designTB,'"')
+mainTBstring <- paste0('mainTB <- "', mainTB,'"')
+pcaDbTable <- paste0('pcaTB <- "', pcaTB,'"')
+species <- Obio@parameterList$species
+geneIDcolumn <- Obio@parameterList$geneIDcolumn
+alignmentGeneID <- Obio@parameterList$primaryAlignmentGeneID
+speciesString <- paste0('species <- "', species,'"')
+alignmentGeneIDString <- paste0('alignmentGeneID <- "', alignmentGeneID,'"')
+geneIDstring <- paste0('geneIDcolumn <- "', geneIDcolumn,'"')
+pos <- grep("designTScol", names(Obio@parameterList))
+if (length(pos) > 0){
+    if (!is.null(Obio@parameterList$designTScol)){
+        designTScol <- Obio@parameterList$designTScol
+        timepointString <- paste0('designTScol <- "', designTScol,'"')
+    } else {
+        timepointString <- "" 
+    }
+} else {
+    timepointString <- ""   
+}
+
+NtopGenesString <- paste0('NtopGenes <- ', Obio@parameterList$NtopGenes,'')  
+```
+
+<style>
+    div.grey pre { background-color:#f5f5f5; }
+    div.grey pre.r { background-color:black; }
+</style>
+            
+Here we set the database access variables so we can get your data in </br></br>
+            
+<div class = "grey">
+```{r, echo=F, eval=T, warning=FALSE,comment=NA}
+            
+            oneString <- paste0(
+                userString,
+                "\n",
+                passString,
+                "\n",
+                hostString,
+                "\n",
+                dbString,
+                "\n"
+            )
+            
+            cat(oneString)
+            
+            
+```
+</div>
+                
+Here we define the tables from which we draw the data:
+<div class = "grey">
+```{r, echo=F, eval=T, warning=FALSE,comment=NA}
+            
+            twoString <- paste0(
+                designString,
+                "\n",
+                mainTBstring,
+                "\n",
+                pcaDbTable,
+                "\n"
+            )
+            
+            cat(twoString)
+            
+            
+```
+ </div>
+                
+                
+And here we set a few more variables we'll need for plotting:
+<div class = "grey">
+```{r, echo=F, eval=T, warning=FALSE,comment=NA}
+threeString <- paste0(
+    speciesString,
+    "\n",
+    geneIDstring,
+    "\n",
+    alignmentGeneIDString,
+    "\n",
+    timepointString,
+    "\n",
+    NtopGenesString
+)
+cat(threeString)
+```
+</div>
+
+## Load Data into R
+Next, let's load your project data. We will need this as a basis for making the plots further down. 
+
+```{r, echo=TRUE, eval=F, warning=FALSE, class.source = 'fold-show'}
+
+## The line below will install an R-package that we need to connect to the  Crick database
+devtools::install_github("decusinlabore/bioLOGIC")
+
+library(bioLOGIC)
+## Load the design table from database. Here we will retrieve information on samples. 
+dfDesign <- import.db.table.from.db(
+    dbname = db,
+    dbtable = designTB,
+    host = host,
+    user = username,
+    password = pass
+)
+## Load main data table from database. In this table a lot of gene-level information for this project is assembled. 
+dfMainData <- import.db.table.from.db(
+    dbname = db,
+    dbtable = mainTB,
+    host = host,
+    user = username,
+    password = pass
+)
+## Load main pca table from database. This table contains cell-level PCA information.
+dfPCA <- import.db.table.from.db(
+    dbname = db,
+    dbtable = pcaTB,
+    host = host,
+    user = username,
+    password = pass
+)
+## For some plots we want to limit the number of genes to the most interesting, so let's get those in a vector:
+# Most variable gene names
+dfVar <- dfMainData[dfMainData$logFC_cut_off != 0 ,c(geneIDcolumn, alignmentGeneID)]
+mostVarGenes <- as.vector(unique(sort(dfVar[,geneIDcolumn])))
+mostVarGenes <- na.omit(mostVarGenes[mostVarGenes != ""])
+# Most variable gene IDs
+mostVarIDs <- as.vector(unique(sort(dfVar[,alignmentGeneID])))
+mostVarIDs <- na.omit(mostVarIDs[mostVarIDs != ""])
+
+
+
+```
+
+
+```{r, echo=F, eval=T, warning=FALSE,comment=NA}
+## In this section the data for this report is loaded from file in order to maintain version control. The data loaded in this section should be identical with the version of the proejct kept in the database. 
+dfDesign <- Obio@dfDesign
+names(dfDesign) <- gsub("\\.", "_", names(dfDesign))
+
+dfMainData <- Obio@databaseTable
+dfPCA <- Obio@dfPCA
+dfModel <- Obio@dfModel
+dfVar <- dfMainData[dfMainData$logFC_cut_off != 0 ,c(geneIDcolumn, alignmentGeneID)]
+mostVarGenes <- as.vector(unique(sort(dfVar[,geneIDcolumn])))
+mostVarGenes <- na.omit(mostVarGenes[mostVarGenes != ""])
+# Most variable gene IDs
+mostVarIDs <- as.vector(unique(sort(dfVar[,alignmentGeneID])))
+mostVarIDs <- na.omit(mostVarIDs[mostVarIDs != ""])
+NtopGenes <- as.numeric(Obio@parameterList$NtopGenes)
+```

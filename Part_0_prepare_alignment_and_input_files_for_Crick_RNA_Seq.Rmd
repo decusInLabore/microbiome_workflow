@@ -1,0 +1,587 @@
+---
+output: 
+    html_document:
+        code_folding: hide
+        df_print: tibble
+        highlight: default
+        theme: paper
+        toc: true
+        toc_depth: 5
+        toc_float: true
+        css: src/assets/style/style.css
+
+always_allow_html: yes
+
+
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+    tidy = F,
+    tidy.opts = list(width.cutoff = 120),
+    message = FALSE,
+    warning = FALSE
+)
+
+## Before starting R, cd into projectDir/scripts/bulkRNAseq_workflow
+
+# R to use
+# module purge;source /camp/stp/babs/working/software/modulepath_new_software_tree_2018-08-13;module load pandoc/2.2.3.2-foss-2016b;ml R/4.0.3-foss-2020a;R
+
+
+## Start in the project dir
+projectDir <- gsub("scripts/bulkRNAseq_workflow/analyses/Main_Analysis", "", getwd())
+
+
+# if (!require("remotes")){
+#   install.packages("remotes")
+# }
+# 
+# remotes::install_github("rstudio/renv")
+
+if (!file.exists("renv.lock")){
+    renv::init()
+} else {
+    renv::restore(prompt=FALSE)
+}
+
+# renv::install("bioc::biomaRt")
+# renv::install("bioc::DESeq2")
+# renv::install("decusinlabore/biologicSeqTools2")
+
+workdir <- paste0(projectDir, "workdir/")
+if (!dir.exists(workdir)){
+    dir.create(workdir)
+}
+
+
+figureCount <- 1
+tableCount <- 1
+upload.to.database <- TRUE
+
+```
+
+
+# Create Alignment Script
+```{r, echo=T, eval=TRUE, warning=FALSE, results="asis"}
+## Load nf-core basedesign file
+FN <- paste0(projectDir, "data/base.design.txt")
+dfbase <- readr::read_delim(FN, delim="\t")
+dfbase <- dfbase[,c("sampleID", "sample.id")]
+dfSettings <- dfbase
+## Get available files
+seqDir <-  c(
+    "/camp/stp/sequencing/inputs/instruments/fastq/171201_K00102_0171_BHLW2VBBXX/fastq/Ocasio_180917/"
+)
+
+
+# Check available files - paired end
+resList <- purrr::map( 1:length(seqDir) , function( i ) {
+    fastq <- list.files( seqDir[i] )
+    R <- sapply( fastq, function(x) unlist(strsplit(x, "_R"))[2] )
+    R <- paste0( "R", gsub( "_001.fastq.gz", "", R ) )
+    dffastq <- data.frame(
+        fastq,
+        R
+    )
+     dffastq$fastq <- sapply(dffastq$fastq, function(x) unlist(strsplit(x, "_R"))[1])
+    
+    dfR1 <- dffastq[dffastq$R == "R1",]
+    dfR1[["fastq_1"]] <- paste0(
+        seqDir[i],
+        dfR1$fastq,
+        "_R1_001.fastq.gz"
+    )
+    
+    dfR1 <- dfR1[file.exists(dfR1$fastq_1),]
+    dfR1$R <- NULL 
+    
+    dfR2 <- dffastq[dffastq$R == "R2",]
+    
+    if (nrow(dfR2) > 0){
+        dfR2[["fastq_2"]] <- paste0(
+            seqDir[i],
+            dfR2$fastq,
+            "_R2_001.fastq.gz"
+        )
+        
+        dfR2 <- dfR2[file.exists(dfR2$fastq_2),]
+        dfR2$R <- NULL 
+        
+        dfR <- dplyr::full_join(
+            dfR1, 
+            dfR2,
+            by = "fastq"
+        )
+    } else {
+        dfR <- dfR1
+        dfR[["fastq_2"]] <- ""
+    }
+    
+    dfR[["sampleID"]] <- sapply( dfR$fastq, function(x) unlist(strsplit( x, "_" ) )[1] )
+    
+    dfTemp <- dplyr::inner_join(
+        dfSettings,
+        dfR,
+        by = "sampleID"
+    )
+    
+    return( dfTemp )
+    }
+)
+## Collapse the data.frames in the resList list into a single table
+dfRes <- do.call(rbind,resList)
+dfRes$sampleID <- NULL
+dfRes$fastq <- NULL
+# dfRes[["strandedness"]] <- "unstranded"
+dfRes[["strandedness"]] <- "reverse"
+names(dfRes) <- gsub("sample.id", "sample", names(dfRes))
+dfRes <- dfRes[,c("sample", "fastq_1", "fastq_2", "strandedness")]
+readr::write_csv(
+    dfRes, 
+    path = paste0(projectDir, "scripts/bulkRNAseq_workflow/design/nf.core.settings.file.csv")
+)
+## Create NF-core script
+biologicSeqTools2::createbulkRNASeqAnalysisNFcoreScript(
+    outdir = workdir,
+    genomeFa = "/camp/svc/reference/Genomics/babs/mus_musculus/ensembl/GRCm38/release-95/genome/Mus_musculus.GRCm38.dna_sm.toplevel.fa",
+    GTFfile = "/camp/svc/reference/Genomics/babs/mus_musculus/ensembl/GRCm38/release-95/gtf/Mus_musculus.GRCm38.95.rnaseqc.gtf",
+    project_id = "RN18263",
+    scriptOutdir = paste0(projectDir, "scripts/"),
+    NFcoreSettingsFN = paste0(projectDir, "scripts/bulkRNAseq_workflow/design/nf.core.settings.file.csv"),
+    scriptVecSlot = "scriptVec"
+)
+## run the nf core script from the working directory ##
+```
+
+# Create Alignment Script
+```{r, echo=T, eval=TRUE, warning=FALSE, results="asis"}
+
+baseDesignFN <- paste0(
+  "../../../../workdir/data/E7E10E14.base.design.table.txt"
+)
+
+
+
+dfDesign <- read.delim(
+    baseDesignFN,
+    header = T,
+    sep = "\t",
+    stringsAsFactors = F
+)
+
+
+dfDesign <- dfDesign[!(dfDesign$sample.id %in% c("HomFemale_ED07_5", "HomMale_ED07_3", "WtFemale_ED07_2")),]
+
+# In case your sample.id names are organised in the following format:
+# [dataseries]_[sampleGroup]_[replicate]
+# You can use the function below to auto-complete the sample sheet
+# dfDesign <- biologicSeqTools2::completeDesignBasedOnSampleID(dfDesign)
+
+
+## Check: Make sure the above required columns are present:
+names(dfDesign)
+
+
+###############################################################################
+## Add dataseries color, if not provided in base design file                 ##
+
+dfDesign$dataseries_color <- NULL
+
+pos <- grep("^dataseries_color$", names(dfDesign))
+        
+if (length(pos) == 0){
+    dataseries <- unique(dfDesign$dataseries)
+    dataseries_color <- dataseries
+
+
+            #library(scales)
+    #dataseries_color = scales::hue_pal()(length(dataseries_color))
+    
+    ## Avoid clashes with sample.group colors ##
+     #dataseries_color <- rainbow(length(dataseries_color))
+    ## Set custom colors
+    dataseries_color <- c(
+        "#931914", 
+        "#E2690E", 
+        "#FBB821", 
+        "#58327C", 
+        "#769E9C"
+    )
+            #sample.group_color = c("#990000", "#009900")
+
+    dfSeriesColors <- unique(data.frame(dataseries, dataseries_color))
+
+    dfDesign <- merge(dfDesign, dfSeriesColors, by.x = "dataseries", "dataseries")
+
+}
+
+
+## Done                                                                      ##
+###############################################################################
+
+###############################################################################
+## Add sample group colors if not provied                                    ##
+
+dfDesign$sample.group_color <- NULL
+
+pos <- grep("sample.group_color", names(dfDesign))
+        
+if (length(pos) == 0){
+    sample.group <- unique(dfDesign$sample.group)
+    sample.group_color <- sample.group
+
+
+            #library(scales)
+    #sample.group_color = scales::hue_pal()(length(sample.group_color))
+            #sample.group_color = c("#990000", "#009900")
+    
+    ## set sample group colors manually
+    sample.group_color <- c(
+        "#F7D2AD",
+        "#E59a61",
+        "#E2690E",
+        "#F9E8C2",
+        "#F7CA7E",
+        "#FBB821",
+        "#F0F4F4",
+        "#BCCECC",
+        "#769E9C",
+        "#CE9393",
+        "#BD4340",
+        "#931914",
+        "#C2A7D0",
+        "#8062A4",
+        "#58327C"
+    )
+
+    dfGroupColors <- unique(data.frame(sample.group, sample.group_color))
+
+    dfDesign <- merge(dfDesign, dfGroupColors, by.x = "sample.group", "sample.group")
+
+}
+
+dfDesign$dataseries <- factor(dfDesign$dataseries, levels = c("WtFemale",  "HetFemale", "HomFemale",    "WtMale", "HomMale"))
+dfDesign <- dfDesign[order(dfDesign$dataseries, dfDesign$f_timepoint, dfDesign$f_replicate),]
+dfDesign$dataseries <- as.vector(dfDesign$dataseries)
+
+
+
+
+## Save the design file and make sure its specified in the Setup function.
+designFN =  paste0(projectDir, "scripts/bulkRNAseq_workflow/design/design.table.txt")
+#designFN <- "design/E7E10E14.design.table.txt"
+
+write.table(
+    dfDesign,
+    designFN, 
+    sep = "\t",
+    row.names = F
+)
+
+## check design file ##
+## This section will check if all relevant columns are present
+
+# sample.id has a unique name for each sample without spaces, 
+# e.g. dataseries_sampleGroup_rep1
+
+## sample.group summarises sample.ids of the same sample group, 
+# e.g. dataseries_sampleGroup
+
+## dataseries
+# supergroup. E.g. Treatment over various timepoints or a cell line
+
+## comp_1 to comp_N-
+# comp_1 to comp_N specify differential gene expression comparisons. In each column
+# samples are assigned to group_A or group_B prefixed with a 1_ or 2_ depending on the 
+# position in the A vs B differential gene expression comparison.
+
+## LRT_....
+# Saple groups for a LRT comparison. Assign each sample to an LRT group or leave 
+# empty if that sample is not to be included into that LRT. 
+
+## timeseries
+# if you have a time-series experiment, indicate a timepoint for each sample. 
+
+## f_
+# indicate experimental factors in the experiment. Prefix each variable factor
+# with an f_
+
+## Keep in mind that all entries in the DESeq2 models need to be present as columns
+
+
+## Done design file                                                          ##
+###############################################################################
+
+###############################################################################
+## Create model files                                                        ##
+
+# If you already have a model file, just add the path to the file at the bottom
+# of this section. In this case, there is no need to create the file using this
+# template.
+
+comparisonID <- c(
+    names(dfDesign)[grep("comp_", names(dfDesign))]
+)
+comparison <- rep("", length(comparisonID))
+for (i in 1:length(comparisonID)){
+    contrasts = sort(as.vector(unique(dfDesign[,comparisonID[i]])), decreasing = FALSE)
+    contrasts = contrasts[contrasts != ""]
+
+    contrasts <- gsub("^1_", "", contrasts)
+    contrasts <- gsub("^2_", "", contrasts)
+
+    #Create contrast vector
+    #contrast.vector = c([condition],[1_diff.gene set, e.g. mt],[2_baseline, e.g. wt])
+    #if (contrasts[2] != "scr"){
+    #  contrasts = rev(contrasts)
+    #}
+    
+    if (length(contrasts) > 0){
+        sel.col = contrasts
+
+        contrast.vector = append("condition", contrasts)
+        colName = paste(contrasts, collapse = "_vs_")
+        comparison[i] <- colName  
+    } else {
+        comparison[i] <- gsub("comp_", "", comparisonID[i])
+    }
+    
+}
+
+test <- rep("Wald", length(comparison))
+type <- rep("DGE", length(comparison))
+
+model <- rep("~ condition", length(comparison))
+
+## You might need to replace the above model vector with a bespoke model
+# for each comparison
+# example for an experiment with 5 comparisons
+# model <- c(
+#     "~ condition",
+#     "~ condition + f_timepoint + condition:f_timepoint",
+#     "~ condition + f_timepoint + condition:f_timepoint",
+#     "~ condition + f_timepoint + condition:f_timepoint",
+#     "~ condition + f_timepoint + condition:f_timepoint"
+# )
+
+## Reduced model not relevant for a DGE, but a column that needs to be present
+reducedModel <- rep("", length(comparison))
+
+## Normalise all samples together, or just those involved in the DGE comparison
+normalizeAllSamplesTogether <- rep(FALSE, length(comparison))
+betaPrior <- rep(TRUE, length(comparison))
+
+
+dfModel <- data.frame(
+    comparison,
+    comparisonID,
+    test,
+    type,
+    model,
+    reducedModel,
+    normalizeAllSamplesTogether,
+    betaPrior, stringsAsFactors = TRUE
+)
+
+
+## Now add the LRT part
+comparisonID <- names(dfDesign)[grep("LRT_", names(dfDesign))]
+comparison <- names(dfDesign)[grep("LRT_", names(dfDesign))]
+
+## Use conditon as stand-in for the variable to do LRT on. 
+
+if (length(comparison) > 0){
+        test <- rep("LRT", length(comparison))
+        type <- rep("LRT", length(comparison))
+        model <- rep("~ condition", length(comparison))
+        reducedModel <- rep("~1", length(comparison))
+        normalizeAllSamplesTogether <- rep(FALSE, length(comparison))
+        betaPrior <- rep("", length(comparison))
+
+
+
+        dfMLRT <- data.frame(
+            comparison,
+            comparisonID,
+            test,
+            type,
+            model,
+            reducedModel,
+            normalizeAllSamplesTogether,
+            betaPrior,
+            stringsAsFactors = FALSE
+        )
+
+        dfModel <- rbind(
+            dfModel,
+            dfMLRT
+        )
+}
+
+dfModel[is.na(dfModel)] <- ""
+
+#modelFN <- "design/E7E10E14.model.table.txt"
+modelFN <- paste0(projectDir, "scripts/bulkRNAseq_workflow/design/model.table.txt")
+
+write.table(
+    dfModel ,
+    modelFN , 
+    row.names = FALSE, 
+    sep = "\t"
+)
+
+
+## Done model file                                                           ##
+###############################################################################
+
+###############################################################################
+## RSEM count file                                                           ##
+###############################################################################
+
+countTableFN = "/camp/stp/babs/working/boeings/Projects/lovellbadger/gunes.taylor/483_vis_E07_E10_E14_merged/workdir/star_rsem/rsem.merged.gene_counts.tsv"
+
+
+
+dfRSEM <- read.delim(
+    countTableFN, 
+    header=T,
+    sep="\t",
+    stringsAsFactors = F
+)
+
+
+dfRSEM$transcript_id.s. <- NULL
+## Customization
+## Make sure it's integers:
+dfRSEM[,2:ncol(dfRSEM)] <- round(dfRSEM[,2:ncol(dfRSEM)])
+
+
+samplesPresent <- names(dfRSEM)[names(dfRSEM) != "gene_id"]
+samplesNotPresent <- dfDesign$sample.id[!(dfDesign$sample.id %in% names(dfRSEM))]
+
+## Updating dfDesign
+dfDesign <- dfDesign[dfDesign$sample.id %in% samplesPresent, ]
+
+#designFN <- "design/E7E10E14.design.table.txt"
+
+write.table(
+    dfDesign,
+    designFN , 
+    sep = "\t",
+    row.names = F
+)
+
+
+
+## Format: |gene_id column names X|sample.id[1]|sample.id[2]|sample.id[3]|...
+
+rsemOrder <- c(
+        "gene_id",
+        paste0(
+            as.vector(dfDesign$sample.id)
+            #"_TPM"
+        )
+    )
+    
+dfRSEM <- dfRSEM[, rsemOrder]
+    
+names(dfRSEM) <- gsub("ENSGALG", "gene_id", names(dfRSEM))
+
+countTableFN = paste0(projectDir, "data/rsem.count.txt")
+#countTableFN <- "../data/dfCount.txt"
+
+write.table(dfRSEM, countTableFN, sep = "\t", row.names=F)
+
+
+dfCount <- dfRSEM
+names(dfCount)
+dfCount$transcript_id.s. <- NULL
+
+checkNames <- names(dfCount)
+checkNames <- checkNames[checkNames != "gene_id"]
+designNames <- unique(dfDesign$sample.id)
+
+if (sum(designNames %in% checkNames) != length(designNames)){
+    stop("Check if the sample.ids given in the Count file match those in the design file.")
+} else {
+    print("Count file ok. ")
+}
+
+
+## Adjust TPM file order to the order given in the design file
+
+
+## Done adding count file                                                    ##
+###############################################################################
+
+
+###############################################################################
+## TPM File                                                                  ##
+###############################################################################
+
+## TPM file ##
+## The tpm file should contain the following columns:
+## first column: primary gene alignment ID column name gene_id.
+## The column names aside from the gene_id column should match the sample.id entries in the design file.
+## Suggestion: save the tpm file in [project_folder]/data/gene.tpm.file.txt
+
+## Example: process NF-core output TPM file
+
+TpmTableFN = "/camp/stp/babs/working/boeings/Projects/lovellbadger/gunes.taylor/483_vis_E07_E10_E14_merged/workdir/star_rsem/rsem.merged.gene_tpm.tsv"
+
+dfTPM <- read.delim(
+    TpmTableFN, 
+    header=T,
+    sep="\t",
+    stringsAsFactors = F
+)
+
+dfTPM$transcript_id.s. <- NULL
+
+names(dfTPM) <- gsub("_TPM", "", names(dfTPM))
+
+checkNames <- names(dfTPM)
+checkNames <- checkNames[checkNames != "gene_id"]
+designNames <- unique(dfDesign$sample.id)
+
+if (sum(designNames %in% checkNames) != length(designNames)){
+    exit("Check if the sample.ids given in the Tpm file match those in the design file.")
+} else {
+    print("TPM file ok. ")
+}
+
+
+## Adjust TPM file order to the order given in the design file
+tpmOrder <- unique(
+    c(
+        "gene_id",
+        paste0(
+            as.vector(dfDesign$sample.id)
+        )
+    )
+)
+
+dfTPM <- unique(dfTPM[, tpmOrder])
+
+TpmTableFN =   paste0(projectDir, "data/dfTPM.txt")
+
+write.table(
+    dfTPM,
+    TpmTableFN,
+    sep = "\t",
+    row.names = F
+)
+
+
+## Done adding TPM file                                                      ##
+###############################################################################
+
+###############################################################################
+## External DEseq2 results                                                   ##
+###############################################################################
+
+## DGE Type ##
+
+## LRT Type ##
+```  

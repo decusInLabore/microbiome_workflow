@@ -1,0 +1,395 @@
+---
+output: 
+    html_document:
+        code_folding: hide
+        df_print: tibble
+        highlight: default
+        theme: paper
+        toc: true
+        toc_depth: 5
+        toc_float: true
+        css: src/assets/style/style.css
+
+always_allow_html: yes
+---
+
+```{r, include=FALSE}
+
+# Recommended R-setup
+# module purge;source /camp/stp/babs/working/software/modulepath_new_software_tree_2018-08-13;module load pandoc/2.2.3.2-foss-2016b;ml R/4.0.3-foss-2020a;R
+```
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+    tidy = F,
+    tidy.opts = list(width.cutoff = 120),
+    message = FALSE,
+    warning = FALSE
+)
+
+
+# if (!requireNamespace("remotes")){
+#   install.packages("remotes")
+# }
+
+#remotes::install_github("rstudio/renv")
+
+if (!file.exists("renv.lock")){
+    renv::init()
+} else {
+    renv::restore(prompt = FALSE)
+}
+
+
+library(tidyverse)
+library(dplyr)
+library(Seurat)
+library(ggplot2)
+library(tidyr)
+library(knitr)
+
+cwd <- paste0(here::here(),"/")
+tempWorkDir <- paste0(cwd, "../")
+
+## Load custom packages specific for this analysis ##
+#source("assets/R/scTools.r")
+#source("assets/R/SBwebtools.pckg.r")
+
+#renv::install("decusInLabore/biologicSeqTools")
+#renv::install("decusInLabore/biologicToolsSC")
+library(Seurat)
+library(biologicSeqTools2)
+library(biologicToolsSC)
+
+## Make sure the correct future version (> 1.2) is installed
+#renv::install("https://cran.r-project.org/src/contrib/Archive/future/future_1.19.1.tar.gz")
+## Doublet Finder
+#renv::install("chris-mcginnis-ucsf/DoubletFinder")
+#renv::install("bioc::clusterProfiler")
+#renv::install("bioc::AUCell")
+#renv::install("YuLab-SMU/ggtree")
+
+upload.results.to.database <- TRUE
+save.chunk.intermediates <- TRUE
+
+
+###############################################################################
+##                                                                           ##
+figureCount <- 1
+
+## Load R module load R/3.5.1-foss-2018b ##
+#setwd(Obio@parameterList$localWorkDir)
+
+
+
+
+##                                                                           ##
+###############################################################################
+
+###############################################################################
+## SB local libpaths                                                         ##
+## Set filename for temp pdf files ##
+
+# if (length(.libPaths()) > 2){
+#     .libPaths(.libPaths()[2:3])
+# }
+## Done                                                                      ##
+###############################################################################
+
+
+
+```
+
+
+<!-- Running Individual Modules in R -->
+<!-- For example rmarkdown::render("src/modules/settings/partB.set.parameters.Rmd", output_dir = "..") -->
+
+
+<!-- Essential 1: Set Analysis Parameters Chapter/Module (output required later) -->
+```{r child = 'src/modules/section_B/B.1.set.parameters.Rmd', eval=TRUE}
+
+```
+
+<!-- Optional 2: Retrieve Reference Genes from Database or Gmt file -->
+```{r child = 'src/modules/section_B/B.2.retrieve.reference.gene.sets.Rmd', eval=TRUE}
+```
+
+<!-- Essential 3: (output required later): Create Integrated Seurat Object Chapter/Module -->
+```{r child = 'src/modules/section_B/B.3.create.integrated.seurat.object.Rmd', eval=TRUE}
+```
+
+```{r, eval=T, echo=F}
+
+## The above step is the most time consuming. Saving the Obio and OsC object here allows 
+save(Obio, 
+     file = paste0(
+         Obio@parameterList$localWorkDir,
+         Obio@parameterList$project_id,
+         ".bioLOGIC.Robj"
+     )
+)
+
+print("Obio Object saved.")
+
+save(OsC,
+    file = paste0(
+         Obio@parameterList$localWorkDir,
+         Obio@parameterList$project_id,
+        ".Seurat.Robj"
+     )
+)
+
+print("OsC Object saved.")
+
+
+## Optional: load OsC, Obio instead of the previous three steps. 
+# load(
+#   file = paste0(
+#          Obio@parameterList$localWorkDir,
+#          Obio@parameterList$project_id,
+#         ".Seurat.Robj"
+#      )
+# )
+# 
+# load(
+#   file = paste0(
+#          Obio@parameterList$localWorkDir,
+#          Obio@parameterList$project_id,
+#          ".bioLOGIC.Robj"
+#      )
+# )
+
+```
+
+<!-- Optional 4: (creates output only): Create variation plots Chapter/Module -->
+```{r child = 'src/modules/section_B/B.4.create.variation.plots.Rmd', eval=TRUE}
+```
+
+<!-- Essential 6: (output required later): 
+DGE Marker gene upload Chapter/Module -->
+```{r child = 'src/modules/section_B/B.6.create.pca.plots.Rmd', eval=TRUE}
+```
+
+```{r, eval=F, echo=T}
+
+## This will load the objects saved in B6. 
+load(paste0(
+         Obio@parameterList$localWorkDir,
+         Obio@parameterList$project_id,
+        ".Seurat.Robj"
+     )
+)
+
+load(paste0(
+         Obio@parameterList$localWorkDir,
+         Obio@parameterList$project_id,
+         ".bioLOGIC.Robj"
+     )
+)
+
+dotsize  = 1
+
+
+if (nrow(OsC@meta.data) > 1000){
+  dotsize  = 0.75
+} else if (nrow(OsC@meta.data) > 10000){
+  dotsize = 0.5
+} else if (nrow(OsC@meta.data) > 20000){
+  dotsize = 0.1
+} else if (nrow(OsC@meta.data) > 50000){
+  dotsize = 0.05
+}
+
+Obio@parameterList$dotsize <- dotsize
+
+legendDotSize <- 5
+Obio@parameterList$legendDotSize <- legendDotSize
+dendrofactor <- 5
+Obio@parameterList$dendrofactor <- dendrofactor
+```
+
+<!-- Essential 7: (output required later): Create variation plots Chapter/Module -->
+```{r child = 'src/modules/section_B/B7.calculate.average.expression.Rmd', eval=TRUE}
+```
+
+<!-- Optional 8: (Output only): Create pca plots Chapter/Module -->
+```{r child = 'src/modules/section_B/B8.plot.pca.and.tsne.results.Rmd', eval=TRUE}
+```
+
+<!-- Optional 9: (Output only): Create pca plots Chapter/Module -->
+```{r child = 'src/modules/section_B/B9.euclidian.distances.figure.Rmd', eval=TRUE}
+```
+
+
+<!-- Optional 10: (Output only): Doublet Estimate Chapter/Module -->
+```{r child = 'src/modules/section_B/B10.doublet.estimation.plots.Rmd', eval=TRUE}
+```
+
+<!-- Optional 11: (Output only): Doublet Estimate Chapter/Module -->
+```{r child = 'src/modules/section_B/B11.cell.cycle.phase.plots.Rmd', eval=TRUE}
+```
+
+<!-- Optional 12: (Output only): Cell Distribution Barchart Chapter/Module -->
+```{r child = 'src/modules/section_B/B12.Ncell.barchart.plots.Rmd', eval=TRUE}
+```
+
+<!-- Optional 13: (Output only):Category Enrichments Chapter/Module -->
+```{r child = 'src/modules/section_B/B13.AUC.cat.enrichments.Rmd', eval=FALSE}
+```
+
+<!-- Essential 14: (output required later):Category Linear Regression Marker Gene Data Prep Chapter/Module -->
+```{r child = 'src/modules/section_B/B14.linear.regression.data.prep.Rmd', eval=TRUE}
+```
+
+<!-- Essential 15: (output required later):Category Linear Regression Marker Gene Data Prep Chapter/Module -->
+```{r child = 'src/modules/section_B/B15.heatmaps.and.dotplots.Rmd', eval=TRUE}
+```
+
+<!-- Essential 16: (output required later):Category Make cluster table Data Prep Chapter/Module -->
+```{r child = 'src/modules/section_B/B16.make.cluster.table.Rmd', eval=FALSE}
+```
+
+<!-- Essential 17: (output required later):Category Make cluster table Data Prep Chapter/Module -->
+```{r child = 'src/modules/section_B/B17.cell.type.estimate.Rmd', eval=FALSE}
+```
+
+<!-- Essential 18: (output required later):Category Make cluster table Data Prep Chapter/Module -->
+```{r child = 'src/modules/section_B/B18.gene.set.heatmaps.Rmd', eval=TRUE}
+```
+
+
+<!-- Essential 19: (output required later):Category Make cluster table Data Prep Chapter/Module -->
+```{r child = 'src/modules/section_B/B19.example.feature.plots.Rmd', eval=TRUE}
+```
+
+<!-- Essential 20: (output required later):Category Make cluster table Data Prep Chapter/Module -->
+```{r child = 'src/modules/section_B/B20.pca.cell.and.loading.plots.Rmd', eval=FALSE}
+```
+
+<!-- Optional 21: (output required later):Category Make cluster table Data Prep Chapter/Module -->
+```{r child = 'src/modules/section_B/B21.pseudotime.Rmd', eval=FALSE}
+```
+
+<!-- Optional 22: (output required later): Add extra tables Chapter/Module -->
+```{r child = 'src/modules/section_B/B22.add.extra.tables.Rmd', eval=TRUE}
+```
+
+
+
+```{r saveobject, eval=TRUE, echo=T, results=F}
+### Will save Obio object here, so it can be re-used with different parameters
+save(Obio, 
+     file = paste0(
+         Obio@parameterList$localWorkDir,
+         Obio@parameterList$project_id,
+         ".bioLOGIC.Robj"
+     )
+)
+
+print("Obio Object saved.")
+
+save(OsC,
+    file = paste0(
+         Obio@parameterList$localWorkDir,
+         Obio@parameterList$project_id,
+        ".Seurat.Robj"
+     )
+)
+
+renv::snapshot()
+
+```
+
+
+
+```{r create_report_params, eval=T, results="asis"}
+
+## Try to retrieve project data from db ##
+db.pwd2 <- "zU3ufd9L"
+db.user2 <- "reader"
+host2 <- "clvd1-db-u-p-17.thecrick.org"
+projectParams <- Obio@documentationParams
+
+tryCatch({
+    dbDB = DBI::dbConnect(
+        drv = RMySQL::MySQL(), 
+        user = db.user2, 
+        password = db.pwd2, 
+        host = host2, 
+        dbname = "clarity_shadow"
+    )
+    dfProposal <-  DBI::dbGetQuery(
+        dbDB, 
+        paste0("SELECT * FROM clarify_asf_proposals WHERE project_name ='",Obio@projectDetailList$lims.id,"'")
+    )
+    dbDisconnect(dbDB)
+}, error = function(x) {
+    message("Project Database could not be reached or has no entry in Obio@parameterList$lims.id for this analysis.")
+})
+
+###############################################################################
+## Helper
+firstup <- function(x) {
+    substr(x, 1, 1) <- toupper(substr(x, 1, 1))
+    x
+}
+##
+###############################################################################
+
+
+if (exists("dfProposal")){
+    if (!is.na(dfProposal[1,"ProjectAlias"]) & dfProposal[1,"ProjectAlias"] != ""){
+        projectParams[["title"]] = paste0(dfProposal[1,"ProjectAlias"], " - ", dfProposal[1,"project_name"])
+    }
+    
+    if (!is.na(dfProposal[1,"project_user"]) & dfProposal[1,"project_user"] != ""){
+        labString <- firstup(dfProposal[1,"user_lab"])
+        labString <- substr(labString, 1, (nchar(labString) - 1))
+      
+        projectParams[["subtitle"]] = paste0(labString, " Lab - ", dfProposal[1,"project_user"])
+        projectParams[["subtitle"]] <- gsub("^ Lab - ", "", projectParams[["subtitle"]])
+        
+    }
+    
+    if (!is.na(dfProposal[1,"proposal_text"]) & dfProposal[1,"proposal_text"] != ""){
+        projectParams[["abstract"]] = dfProposal[1,"proposal_text"]
+       
+        
+    }
+}
+   
+## Escape all special characters
+projectParams <- lapply(
+  projectParams, function(x) 
+  #gsub("([.|()\\^{}+$*?]|\\[|\\])", "\\\\\1", x)
+  gsub("([.|()/\\^{}+$*?]|\\[|\\])", " ", x)
+) 
+
+projectParams <- lapply(
+  projectParams, function(x) 
+  #gsub("([.|()\\^{}+$*?]|\\[|\\])", "\\\\\1", x)
+  gsub("\\\n", " ", x)
+) 
+
+
+```
+
+
+
+## Documentation
+```{r documentation, eval=TRUE, echo=T, results=T}
+sessionInfo()
+```
+
+---
+title: "`r projectParams$title`"
+subtitle:  "`r projectParams$subtitle`"
+author:
+    - Bioinformatics: Stefan Boeing^[The Francis Crick Institute, stefan.boeing@crick.ac.uk]
+date: 'Compiled: `r format(Sys.Date(), "%B %d, %Y")`'
+
+abstract: |
+    "`r projectParams$abstract`"
+
+
+---

@@ -1,0 +1,714 @@
+# Gene Set Enrichment Analysis (GSEA) {.tabset .tabset-fade .tabset-pills}
+<!-- Set PArameters Module -->
+<!-- Set the chnkPrefix to make all chunks unique in the overall folder -->
+```{r partC_C11B_pca_init, echo=FALSE, eval=TRUE, warning=FALSE}
+chnkPrefix <- "C11.GSE."
+VersionPdfExt <- VersionPdfExt <- paste0(".",chnkPrefix,"V", gsub("-", "", Sys.Date()), ".pdf")
+
+#library(magrittr)
+
+```
+
+```{r, echo=FALSE, eval=TRUE, warning=FALSE, results=F}
+workdir <- Obio@parameterList$workdir
+reportTableDir <- Obio@parameterList$reportTableDir
+reportFigDir <- Obio@parameterList$reportFigDir
+
+project_id <- project_id
+```
+
+```{r, echo=T, eval=TRUE, warning=FALSE, results="asis"}
+
+if (!exists("project_id")){
+    project_id <- gsub("_designTable", "", designTB)
+}
+
+if (!exists("labname")){
+    labname <- "TBD"
+}
+
+if (!exists("reportFigDir") || is.null(reportFigDir)){
+    reportFigDir <- ""
+}
+
+if (!exists("reportTableDir") || is.null(reportTableDir)){
+    reportTableDir <- ""
+}
+
+if (!exists("VersionPdfExt")){
+    VersionPdfExt <- paste0(".V", gsub("-", "", Sys.Date()), ".pdf")
+}
+```
+
+Find furter background information on the Gene Set Enrichment Analysis (GSEA) and the interpretation of results can be found [here](https://www.gsea-msigdb.org/gsea/doc/GSEAUserGuideFrame.html?_Interpreting_GSEA_Results). Here the improved [fgsea algorithm](https://bioinformatics.stackexchange.com/questions/149/are-fgsea-and-broad-institute-gsea-equivalent) will be used to calculate enrichment scores. 
+
+```{r GSEA_section_1, echo=TRUE, eval=TRUE, warning=FALSE, results=F}
+if (!exists("VersionPdfExt")){
+    VersionPdfExt <- paste0(".V", gsub("-", "", Sys.Date()), ".pdf")
+}
+
+if (!exists("Obio") || is.null(Obio@parameterList$workdir)){
+    workdir <- getwd()
+}
+
+chnkVec <- as.vector(NULL, mode = "character")
+plotList <- list()
+
+plotListER <- list()
+chnkVecER <- list()
+
+
+###############################################################################
+## Prepare GMT file                                                          ##
+
+## Option A - from database ##
+if (exists("Obio") && !is.null(Obio@parameterList$GSEAtables)){
+  tables <- Obio@parameterList$GSEAtables
+  print(
+      paste0(
+        "The following gene sets have been used in the GSEA analysis: ",   
+        sort(paste0(names(Obio@referenceTableList), collapse = ",")), 
+        "."
+      )
+    )
+} else {
+  tables <- c(
+    "mysigdb_h_hallmarks",
+    "mysigdb_c5_BP" #,
+    #Obio@parameterList$lab.categories.table
+  )
+}
+
+
+# #
+dfRefGmt <- create.gmt.file.from.ref.data.table(
+     host = Obio@dbDetailList$host,
+     dbname = "reference_categories_db_new",
+     dataTable = tables,
+     pwd = db.pwd,
+     user=Obio@dbDetailList$db.user,
+     gene.id.column = "hgnc_symbol"
+ )
+
+
+localGmtDir <- paste0(
+    Obio@parameterList$workdir,
+    "GSEA/"
+)
+
+if (!exists(localGmtDir)){
+  dir.create(localGmtDir)
+}
+
+#
+gmtDir<- paste0(
+    Obio@parameterList$workdir,
+    "GSEA/"
+)
+
+gmtFileName <- paste0(
+    project_id,
+    ".",
+    "projectGmtFile.gmt"
+)
+
+dfRefGmt <- dfRefGmt[!(duplicated(dfRefGmt[,1])),]
+
+dfPathwayAnno <- unique(data.frame(cat_id = row.names(dfRefGmt), cat_name = dfRefGmt[,1]), url=dfRefGmt[,2])
+dfRefGmt[,2] <- NULL
+
+
+## transform all columns
+empty_as_na <- function(x){
+    if("factor" %in% class(x)) x <- as.character(x) ## since ifelse wont work with factors
+    ifelse(as.character(x)!="", x, NA)
+}
+
+dfRefGmt <- dfRefGmt %>% dplyr::mutate_each(dplyr::funs(empty_as_na))
+
+
+write.table(
+    dfRefGmt,
+    paste0(localGmtDir, gmtFileName),
+    col.names = FALSE,
+    row.names = FALSE,
+    sep="\t",
+    quote = F
+)
+
+## Done creating project gmt. file                                           ##
+###############################################################################
+
+## Option B: Load a gmt file created by other means
+# FN <- "/Volumes/babs/working/boeings/Projects/goulda/adrien.franchet/472_brains_from_drosophila_larvae_RN21220/workdir/GSEA/RN21220.projectGmtFile.gmt"
+# 
+# dfRefGmt <- read.delim(
+#     FN, 
+#     header = F,
+#     sep = "\t",
+#     stringsAsFactors = F
+# )
+
+###############################################################################
+## Run fGSEA on all log-fold changes                                         ##
+
+selVec <- c(
+    "hgnc_symbol",
+    names(dfMainData)[grep(paste0("contrast_[0-9]{1,2}_logFC"), names(dfMainData))],
+    names(dfMainData)[grep(paste0("contrast_D[0-9]{1,2}_logFC"), names(dfMainData))]
+)
+
+dfGSEAdata <- unique(dfMainData[, selVec])
+dfGSEAdata <- na.omit(dfGSEAdata)
+dfGSEAdata <- dfGSEAdata[rowSums(dfGSEAdata[,2:ncol(dfGSEAdata)]) != 0,]
+
+
+## Delete old rnk files ##
+if (!exists("localGmtDir")){
+  localGmtDir <- "GSEA/"
+}
+
+unlink(paste0(localGmtDir, "*.rnk"))
+
+biologicSeqTools2::create.gsea.rnk.files(
+     workdir,
+     df.dataTable = dfGSEAdata,
+     GSEA.colum.type = "logFC",
+     gene.symbol.column.name = "hgnc_symbol",
+     GSEADir = localGmtDir
+ )
+
+rnkFileVec <- paste0(localGmtDir,list.files(localGmtDir)[grep(".rnk$", list.files(localGmtDir))])
+
+plotList <- list()
+chnkVec <- as.vector(NULL, mode="character")
+
+## Create Excel output ##
+fullOutFN <- paste0(project_id, "_GSEA.xlsx")
+outFN <- paste0(project_id, "_GSEA.xlsx")
+wb <- openxlsx::createWorkbook()
+
+for (i in 1:length(rnkFileVec)){
+    logFCcol <- unlist(strsplit(rnkFileVec[i], "GSEA/"))[2]
+    logFCcol <- gsub(".rnk", "",logFCcol)
+    lg10pCol <- gsub("logFC","lg10p", logFCcol)
+    lg2BaseMeanCol <- gsub("logFC", "lg2BaseMean", logFCcol)
+    
+    tag <- gsub("contrast_[0-9]{1,2}_", "", logFCcol)
+    tag <- paste0("GSEA_", tag)
+    
+    dfRnk <- read.delim(
+        rnkFileVec[i],
+        header=T, 
+        sep = "\t"
+    )
+    
+    GSEAranks <- dfRnk$logFC
+    names(GSEAranks) <- dfRnk$hgnc_symbol
+    
+    pathways <- fgsea::gmtPathways(paste0(localGmtDir, gmtFileName))
+    
+    set.seed(42)
+    fgseaRes <- fgsea::fgsea(
+        pathways = pathways, 
+        stats    = GSEAranks,
+        minSize  = 10,
+        maxSize  = 2500
+    )
+    
+    
+    ###########################################################################
+    ## Make top-bottom 10 plot                                               ##
+    N <- 10
+    ## Top N up NES ##
+    topNup <- as.vector(unlist(fgseaRes[order(fgseaRes$NES, decreasing = T),"pathway"]))[1:N]
+    
+    ## Top N down NES
+    topNdown <- as.vector(unlist(fgseaRes[order(fgseaRes$NES, decreasing = F),"pathway"]))[1:N]
+    
+    topPathways <- c(topNup,rev(topNdown))
+    
+    ## Necessary to load fgsea to get the gridExtra package loaded ##
+    dfTable <- fgseaRes
+    dfTable$pathway <- substr(gsub("_", " ", dfTable$pathway),1,60)
+    
+    library(fgsea)
+    pdf("temp.pdf")
+   plotList[[tag]] <- plotGseaTable(
+        pathways = pathways[topPathways], 
+        stats = GSEAranks, 
+        fgseaRes = dfTable, 
+        gseaParam=0.5,
+        colwidths = c(5, 3, 0, 0, 0), 
+        render = FALSE
+    ) 
+   
+   dev.off()
+   unlink("temp.pdf")
+    
+   ###########################################################################
+    ## Save plot to file                                                     ##
+    FNbase <- paste0("GSEAsummary.", tag,VersionPdfExt)
+    FN <- paste0(reportFigDir, FNbase)
+    FNrel <- paste0("report_figures/", FNbase)
+    
+    pdf(FN)
+        print(grid::grid.draw(plotList[[tag]]))
+        
+    dev.off()
+    ##                                                                       ##
+    ###########################################################################
+    
+    figCap <- paste0(
+    '**Figure ',
+    figureCount,
+    ':** Top up- and downregulated GSEA gene categories for the log-FC comparison ', tag, '. ',
+        'Download a pdf of this figure <a href="',FNrel,'" target="_blank">here</a>. '
+    )
+    
+    figureCount <- figureCount + 1 
+    
+    NewChnk <- paste0(
+            "### ", tag,
+            "\n```{r ",tag,", results='asis', echo=F, eval=TRUE, warning=FALSE, fig.cap='",figCap,"'}\n",
+            "\n",
+            "\n print(grid::grid.draw(plotList[['",tag,"']]))",
+            "\n cat(  '\n')",
+            "\n\n\n```\n"   
+    )
+    
+    chnkVec <- c(
+        chnkVec,
+        NewChnk
+    )
+   
+    ## Done                                                                  ##
+    ###########################################################################
+    
+    ###########################################################################
+    ## Make category plots 
+    ## stump ##
+    # library(fgsea)
+    # plotListER[[tag]] <- plotEnrichment(pathways[[topNup[1]]],
+    #            exampleRanks) + labs(title=gsub("_", " ", topNup[1]))
+    ##
+    ###########################################################################
+    
+    fgseaRes <- unique(fgseaRes[,c("pathway", "NES", "padj")])
+    #fgseaRes <- fgseaRes[fgseaRes$padj < 0.05,]
+    
+    dfTempAnno <- dfPathwayAnno[dfPathwayAnno$cat_name %in% fgseaRes$pathway,]
+    
+    fgseaRes <- merge(
+        dfTempAnno, 
+        fgseaRes, 
+        by.x = "cat_name",
+        by.y = "pathway"
+    )
+    
+    fgseaRes[["GSEA"]] <- tag
+    
+    fgseaRes[["Volcanoplot_Link"]] <- paste0(
+        'https://biologic.crick.ac.uk/', 
+        Obio@parameterList$project_id, 
+        '/scatterplot?x_axis=',
+        logFCcol, 
+        '&y_axis=',
+        lg10pCol,
+        '&cat_id=',
+        fgseaRes$cat_id
+    )
+    
+    fgseaRes[["MAplot_Link"]] <- paste0(
+        'https://biologic.crick.ac.uk/', 
+        Obio@parameterList$project_id, 
+        '/scatterplot?x_axis=',
+        lg2BaseMeanCol, 
+        '&y_axis=',
+        logFCcol, 
+        '&cat_id=',
+        fgseaRes$cat_id
+    )
+    
+    ###############################################################################
+    ## Add scatterplot and heatmap urls                                          ##
+    fgseaRes[["Heatmap_Link"]] <- paste0('https://biologic.crick.ac.uk/', Obio@parameterList$project_id, '/category-view/', fgseaRes$cat_id)
+    
+    ## Done                                                                      ##
+    ###############################################################################
+
+    
+    ###########################################################################
+    ## Save plot to file                                                     ##
+    #library(openxlsx)
+    
+    FNTbase <- outFN
+    FNT <- paste0(Obio@parameterList$reportTableDir, FNTbase)
+    FNTrel <- paste0("report_tables/", FNTbase)
+        
+    
+    
+    sn <- gsub("GSEA_", "", substr( paste0(tag, "_GSEA"), 1, 27))
+    sn <- paste0(i, "_", sn)
+    openxlsx::addWorksheet(wb, sn)
+    openxlsx::freezePane(wb, sn ,  firstActiveRow = 2)
+    
+    hs1 <- openxlsx::createStyle(
+        fontColour = "#ffffff",
+        fgFill = "#000000", 
+        halign = "CENTER", 
+        textDecoration = "Bold"
+    )
+    
+    openxlsx::writeData(wb, sheet=sn, fgseaRes, startRow = 1, startCol = 1, headerStyle = hs1)
+  
+    ##                                                                       ##
+    ###########################################################################        
+
+    
+    if (i==1){
+        dfRes <- fgseaRes
+    } else {
+        dfRes <- rbind(
+            dfRes, 
+            fgseaRes
+        )
+    }
+    print(paste0(tag, " done."))
+}
+
+
+ openxlsx::saveWorkbook(
+        wb, 
+        FNT,
+        overwrite = TRUE
+    )
+
+
+
+
+if (length(plotList) > 2){
+    tabVar <- ".tabset .tabset-fade .tabset-dropdown"
+} else {
+    tabVar <- ".tabset .tabset-fade .tabset-pills"
+}
+
+```
+   
+## Top up-/down-regulated GSEA categories {`r tabVar`}
+
+```{r, echo=F, eval=TRUE, warning=FALSE, results="asis"}
+cat(paste(knitr::knit(text = chnkVec, quiet = T), collapse = '\n'))
+```
+  
+  
+
+```{r GSEA_volcano, echo=TRUE, eval=TRUE, warning=FALSE, results=F}
+###############################################################################
+## Make Volcanoplot                                                          ##
+makeVolcanoPlotGSEA <- function(
+    dfPlotData,
+    geneIDcolumn,
+    topNgenes = 5,
+    dotsize = 1,
+    legendDotSize = 5,
+    sdCutOff = 1
+){
+    headline <- names(dfPlotData)[grep("GSEA", names(dfPlotData))]
+    #headline <- unlist(strsplit(headline, "logFC_"))[2]
+    
+    #names(dfPlotData) <- gsub("contrast_[0-9]{1,2}_", "", names(dfPlotData))
+    
+    logFCcolName <- names(dfPlotData)[grep("NES", names(dfPlotData))]
+    lg10pColName <- names(dfPlotData)[grep("lg10p", names(dfPlotData))]
+    padjColName <- names(dfPlotData)[grep("^padj$", names(dfPlotData))]
+    
+    ## Now let's get these data columns out of the main data table.
+    dfPlotData <- dfPlotData[dfPlotData[,logFCcolName] != 0, ]
+    dfPlotData[,geneIDcolumn] <- as.character(dfPlotData[,geneIDcolumn] )
+    
+    ## Determine logFC cut-off for the Volcano Plot ##
+    lgFCsel <- sdCutOff * sd(dfPlotData[, logFCcolName])
+    
+    dfPlotData[["color"]] <- "NS"
+    dfPlotData[dfPlotData[, logFCcolName] > lgFCsel & dfPlotData[, padjColName] < 0.05, "color"] <-  "Up"
+    
+    dfPlotData[dfPlotData[, logFCcolName] < -1*lgFCsel & dfPlotData[, padjColName] < 0.05, "color"] <-  "Down"
+    
+    ## Re-order dfPlotData for better results
+    
+    ## Let's have a look at the color vector
+    
+    
+    colorVec <- c("blue", "red","black")
+    
+    names(colorVec) <- c("Down", "Up", "NS")
+    
+    
+    ## And here is the resulting color vector
+    colorVec <- colorVec[names(colorVec) %in% dfPlotData$color]
+    
+    dfPlotData$color <- factor(dfPlotData$color, levels = names(colorVec))
+    dfPlotData <- dfPlotData[order(dfPlotData$color, decreasing = F), ]
+    
+    ## And here is the resulting color vector
+    colorVec <- colorVec[names(colorVec) %in% dfPlotData$color]
+    
+    dfPlotData$color <- factor(dfPlotData$color, levels = names(colorVec))
+    dfPlotData <- dfPlotData[order(dfPlotData$color, decreasing = F), ]
+    
+    ## Now let's also add a label for the 10 most significantly up- and down-regulated genes.This number can be changed in the variable Nsel. Here we use the R package ggrepel.
+    
+    library(ggrepel)
+    
+    ## Let's order the data frame by log-fold change
+    dfPlotData <- dfPlotData[order(dfPlotData[,logFCcolName], decreasing = T), ]
+    topGenes <- as.vector(dfPlotData[1:topNgenes,geneIDcolumn])
+    
+    dfPlotData <- dfPlotData[order(dfPlotData[,logFCcolName], decreasing = F), ]
+    bottomGenes <- as.vector(dfPlotData[1:topNgenes,geneIDcolumn])
+    
+    dfPlotData[["label"]] <- ""
+    dfPlotData[dfPlotData[,geneIDcolumn] %in% c(topGenes, bottomGenes), "label"] <- dfPlotData[dfPlotData[,geneIDcolumn] %in% c(topGenes, bottomGenes), geneIDcolumn]
+    
+xMaxVal <- max(abs(dfPlotData[,logFCcolName]))
+    
+pVolcano <- ggplot(
+        data = dfPlotData, 
+        aes_string(x=logFCcolName, y=lg10pColName, color = "color",label = "label")
+    ) + geom_hline(yintercept = 0, color = "black", size=0.5
+    ) + geom_hline(yintercept = -1*log10(0.05), color = "grey", size=0.5, linetype = 2
+    ) + geom_vline(xintercept = 0, color = "black", size=0.5
+    ) + geom_vline(xintercept = c(-1*lgFCsel,lgFCsel), color = "grey", size=0.5, linetype = 2      ) + geom_point( shape=16, size = dotsize
+    ) + scale_colour_manual(name = "Variability" ,values = colorVec
+    
+    ) + theme_bw(
+    )  +  theme(
+        axis.text.y   = element_text(size=8),
+        axis.text.x   = element_text(size=8),
+        axis.title.y  = element_text(size=8),
+        axis.title.x  = element_text(size=8),
+        axis.line = element_line(colour = "black"),
+        panel.border = element_rect(colour = "black", fill=NA, size=1),
+        plot.title = element_text(hjust = 0.5, size = 12)
+    ) + xlim(-1*xMaxVal,xMaxVal
+    ) + ggtitle(paste0("GSEA NES Volcano Plot ", contrastVec[i]) 
+    ) + xlab(gsub("_", " ", logFCcolName)
+    ) + ylab(gsub("_", " ", lg10pColName)            
+    ) + guides(col = guide_legend(override.aes = list(shape = 16, size = legendDotSize))
+    ) 
+
+    plotVolcanoWithLabels <- pVolcano + geom_text_repel(size = 3)
+
+return(plotVolcanoWithLabels)
+}
+## Done Volcanoplot                                                          ##
+###############################################################################
+
+
+chnkVec <- as.vector(NULL, mode = "character")
+plotList <- list()
+
+tagVec <-  unique(dfRes$GSEA)
+
+for (i in 1:length(tagVec)){
+    tag <- paste0("V_",tagVec[i])
+    dfPlot <- dfRes[dfRes$GSEA == tagVec[i], c("GSEA", "cat_id", "cat_name", "NES", "padj")]
+    dfPlot <- na.omit(dfPlot)
+    #dfPlot[["label"]] <- ""
+    dfPlot <- dfPlot[order(dfPlot$NES, decreasing = T), ]
+    minP <- min(dfPlot$padj[dfPlot$padj != 0])
+    dfPlot[["lg10padj"]] <- 0
+    dfPlot[dfPlot$padj != 0, "lg10padj"] <- -1*log10(dfPlot$padj)
+    
+    ## Function is defined in module C9.
+    plotList[[tag]] <- makeVolcanoPlotGSEA(
+        dfPlotData = dfPlot,
+        geneIDcolumn = "cat_name",
+        topNgenes = 5,
+        dotsize = 1,
+        legendDotSize = 5,
+        sdCutOff = 1
+    )
+    
+    ###########################################################################
+    ## Save plot to file                                                     ##
+    FNbase <- paste0(tag, ".volcano.plot", VersionPdfExt)
+    FN <- paste0(Obio@parameterList$reportFigDir, FNbase)
+    FNrel <- paste0("report_figures/", FNbase)
+    
+    pdf(FN)
+        print(plotList[[tag]])
+    dev.off()
+    ##                                                                       ##
+    ###########################################################################
+    
+    # selLg2BM<- selVec[grep("lg2BaseMean_", names(dfPlotData))]
+    # selLogFC <- selVec[grep("_logFC_", names(dfPlotData))]
+    # 
+    #  
+    # xAxis <- selLg2BM[grep(contrastVec[i], selLg2BM)]
+    # yAxis <- selLogFC[grep(contrastVec[i], selLogFC)]
+    # 
+    # link1 <- paste0('<a href="https://biologic.crick.ac.uk/',Obio@parameterList$project_id,'/scatterplot?x_axis=',xAxis,'&y_axis=',yAxis,'&cat_id=ag_lab_categories__10" target="_blank">here</a>.')
+    
+    
+    figCap <- paste0(
+        '**Figure ',
+        figureCount,
+        'A:** GSEA NES Volcano Plot ',tag,'. This may plot might help to determine the overall significance of GSEA category enrichments in this experiment.',
+        'Download a pdf of this figure <a href="',FNrel,'" target="_blank">here</a>. '
+        #'An interactive version of this plot can be found ', link1
+    )
+ 
+    figureCount <- figureCount + 1
+   
+    NewChnk <- paste0(
+            "### GSEAV-Plot ",tag,
+            "\n```{r ",tag,", results='asis', echo=F, eval=TRUE, warning=FALSE, fig.cap='",figCap,"'}\n",
+            "\n",
+            "\n print(plotList[['",tag,"']])",
+            "\n cat(  '\n')",
+            "\n\n\n```\n"   
+    )
+
+    chnkVec <- c(
+        chnkVec,
+        NewChnk
+    )
+    
+      
+}
+
+if (length(plotList) > 2){
+    tabVar <- ".tabset .tabset-fade .tabset-dropdown"
+} else {
+    tabVar <- ".tabset .tabset-fade .tabset-pills"
+}
+
+```
+   
+## Diagnotstic GSEA Volcano Plots {`r tabVar`}
+
+```{r plot_GSEA_cat_overview, echo=FALSE, eval=TRUE, warning=FALSE, results="asis"}
+cat(paste(knit(text = chnkVec, quiet = T), collapse = '\n'))
+```
+  
+  
+    
+```{r GSEA_section, echo=TRUE, eval=TRUE, warning=FALSE, results=F}        
+###############################################################################
+## Retrieve GSEA Table                                                       ##
+
+dfGdat <- dfRes
+
+
+
+
+###############################################################################
+## Plot top-scoring categories                                               ##
+
+## Select top 10 categories from each ##
+
+
+dfGdatS <- dfGdat
+## Write table as Excel into outputs ##
+
+
+    
+
+tableCap <- paste0(
+'**GSEA Result Table:** Find the GSEA normalized enrichment score (NES) and the enrichment p-value in the above table. Plot entries mean that for this category and comparison a GSEA plot is readily available for download. Download the full GSEA result table as Excel file <a href = "',FNTrel,'" target="_blank">here</a>'
+)
+
+dfGdat <- dfGdatS
+
+```
+
+
+## GSEA Result Table
+```{r GSEA_table, echo=TRUE, eval=TRUE, warning=FALSE, results=T, fig.cap=tableCap}
+chnkVec <- as.vector(NULL, mode = "character")
+
+## Add sample group color ##
+
+dfDataTable <- dfGdat
+dfDataTable <- dfDataTable[dfDataTable$padj < 0.25,]
+
+dfDataTable[["Volcanoplot_Link"]] <- paste0(
+    '<a href="',
+    dfDataTable[["Volcanoplot_Link"]],
+    '" target="_blank">Cat Volcano Plot Link</a>'
+)
+
+dfDataTable[["MAplot_Link"]] <- paste0(
+    '<a href="',
+    dfDataTable[["MAplot_Link"]],
+    '" target="_blank">Cat_MA Plot Link</a>'
+)
+
+dfDataTable[["Heatmap_Link"]] <- paste0(
+    '<a href="',
+    dfDataTable[["Heatmap_Link"]],
+    '" target="_blank">Cat Heatmap Link</a>'
+)
+
+
+dfDataTable$cat_name <- gsub("_", " ", dfDataTable$cat_name)
+dfDataTable$NES <- round(dfDataTable$NES, 3)
+dfDataTable$padj <- scales::scientific(dfDataTable$padj, digits = 3)
+
+
+GSEAcol <- grDevices::colorRampPalette(RColorBrewer::brewer.pal(8, "Pastel1"))(length(unique(dfDataTable$GSEA)))
+
+dfCol <- data.frame(GSEA=unique(dfDataTable$GSEA), contrastCol=GSEAcol)
+
+dfDataTable <- merge(
+    dfDataTable, 
+    dfCol, 
+    by.x = "GSEA",
+    by.y = "GSEA"
+)
+
+dfDataTable$GSEA <- paste0(
+        '<p style="background-color:',dfDataTable$contrastCol,';text-align:center">',dfDataTable$GSEA,'</p>'
+    ) 
+
+selVec <- c(
+    "GSEA",
+    "cat_name",         
+    "NES",              
+    "padj",            
+    "Volcanoplot_Link", 
+    "MAplot_Link",      
+    "Heatmap_Link"  
+)
+
+selVec <- selVec[selVec %in% names(dfDataTable)]
+dfDataTable <- unique(dfDataTable[,selVec])
+
+dfDataTable <- dfDataTable[order(dfDataTable$NES, decreasing=F), ]
+
+DT::datatable(
+    dfDataTable,
+    colnames = gsub("_", " ", names(dfDataTable)),
+    rownames = FALSE,
+    escape = FALSE,
+    options = list(
+        initComplete = htmlwidgets::JS(
+            "function(settings, json) {",
+            "$(this.api().table().header()).css({'background-color': '#000', 'color': '#fff'});",
+            "}"
+        ),
+    order = list( list(3, 'desc'), list(4, 'asc'))
+    )
+) 
+
+
+
+
+```
+
+
+
+

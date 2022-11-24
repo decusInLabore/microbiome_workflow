@@ -1,0 +1,791 @@
+<!-- Set PArameters Module -->
+<!-- Set the chnkPrefix to make all chunks unique in the overall folder -->
+```{r, echo=FALSE, eval=TRUE, warning=FALSE}
+chnkPrefix <- "B.9.pca."
+VersionPdfExt <- VersionPdfExt <- paste0(".",chnkPrefix,"V", gsub("-", "", Sys.Date()), ".pdf")
+
+library(gplots)
+library(RColorBrewer)
+library(lattice)
+library(genefilter)
+library(tidyr)
+library(ggplot2)
+```
+
+```{r, echo=FALSE, eval=TRUE, warning=FALSE, results=F}
+
+dfMainData <- Obio@databaseTable
+geneIDcolumn <- Obio@parameterList$geneIDcolumn
+
+if (geneIDcolumn != "hgnc_symbol" | geneIDcolumn != "mgi_symbol"){
+    geneSelCol <- "hgnc_symbol"
+} else {
+    geneSelCol <- geneIDColumn
+}
+
+Ntop4pcaGeneSelection <- Obio@dataTableList$Ntop4pcaGeneSelection
+HmDisplayCatsFromDb <- Obio@parameterList$HmDisplayCatsFromDb
+project_id <- Obio@parameterList$project_id
+alignmentGeneID <- Obio@parameterList$primaryAlignmentGeneID
+lab.categories.table <- Obio@parameterList$lab.categories.table
+ref.cat.db.table = lab.categories.table
+reportFigDir <- Obio@parameterList$reportFigDir
+
+labname <- Obio@parameterList$labname
+dfDesign <- Obio@dfDesign
+dfPCA <- Obio@dfPCA
+
+## Use provided PCA file if available ##
+if (!is.null(Obio@projectDetailList$PcaFN)){
+    dfPCA <- read.delim(
+        Obio@projectDetailList$PcaFN,
+        header = T, 
+        sep="\t",
+        stringsAsFactors = F
+    )
+    
+    names(dfPCA) <- gsub("\\.", "_", names(dfPCA))
+    
+    Obio@dfPCA <- data.frame(NULL)
+    Obio@dfPCA <- dfPCA
+}
+
+
+dds <- Obio@ObjDds
+```
+
+
+
+```{r, echo=TRUE, eval=TRUE, warning=FALSE, results="hide"}
+###############################################################################
+## Add PCA plot                                                              ##
+if (!exists("project_id")){
+    project_id <- gsub("_designTable", "", designTB)
+}
+
+
+if (!exists("VersionPdfExt")){
+    VersionPdfExt <- paste0(".V", gsub("-", "", Sys.Date()), ".pdf")
+}
+
+if (!exists("labname")){
+    labname <- "TBD"
+}
+
+if (!exists("reportFigDir") || is.null(reportFigDir)){
+    reportFigDir <- ""
+}
+
+chnkVec <- as.vector(NULL, mode = "character")
+plotList <- list()
+tag <- "PCAvariationPerDimension"
+
+
+if (exists("Obio")){
+    pos <- grep("PCApercentVar", slotNames(Obio))
+    if (!is.null(Obio@PCApercentVar)){
+        PCApercentVar <- Obio@PCApercentVar
+    }
+} else {
+    PCApercentVar <- NULL
+}
+
+
+## Use custom PCA colors if specified ##
+
+## Just in case we still have dots instead of underscores
+names(dfPCA) <- gsub("\\.", "_", names(dfPCA))
+pcaSampleGroups <- unique(sort(dfPCA$sample_group))
+
+## If sample.group colors are set use those, otherwise set default.
+pos <- grep("^sample.group_color$", names(dfDesign))
+
+if (length(pos) == 0){
+    ## Create default ##
+    sample.group <- unique(dfDesign$sample.group)
+    sample.group_color <- sample.group
+            #library(scales)
+    sample.group_color = scales::hue_pal()(length(sample.group_color))
+            #sample.group_color = c("#990000", "#009900")
+    
+    ## set sample group colors manually
+    
+    dfGroupColors <- unique(data.frame(sample.group, sample.group_color))
+    dfDesign <- merge(dfDesign, dfGroupColors, by.x = "sample.group", "sample.group")
+    
+}
+
+dfColor <- unique(
+        Obio@dfDesign[,c("sample.group", "sample.group_color")]
+)
+
+if (nrow(dfColor) == length(pcaSampleGroups)){
+  
+    namedColors <- dfColor$sample.group_color
+    names(namedColors) <- dfColor$sample.group
+  
+    plotList[[tag]] <- ggplot2::ggplot(
+        data = dfPCA,
+        ggplot2::aes(x=PC1, y=PC2, fill = sample_group)
+    ) + ggplot2::geom_vline(xintercept = 0, color = "grey", size=0.5
+    ) + ggplot2::geom_hline(yintercept = 0, color = "grey", size=0.5
+    ) + ggplot2::geom_point(
+        size=2,
+        shape = 21
+    ) + ggplot2::scale_fill_manual("Sample Groups", values = namedColors
+    )
+} else {
+    plotList[[tag]] <- ggplot2::ggplot(
+        data = dfPCA,
+        ggplot2::aes(x=PC1, y=PC2, fill = sample_group)
+    ) + ggplot2::geom_vline(xintercept = 0, color = "grey", size=0.5
+    ) + ggplot2::geom_hline(yintercept = 0, color = "grey", size=0.5
+    ) + ggplot2::geom_point(
+        size=2,
+        shape = 21
+    ) 
+}
+
+
+
+
+if (!is.null(PCApercentVar)){
+    plotList[[tag]] <- plotList[[tag]] + ggplot2::labs(
+        title = "PCA Plot", 
+        x = paste0("PC1 \n ",round(100* Obio@PCApercentVar[1]),"% variability explained"),
+        y = paste0("PC2 \n ",round(100* Obio@PCApercentVar[2]),"% variability explained")
+    )
+} else {
+    plotList[[tag]] <- plotList[[tag]] + ggplot2::labs(
+        title = "PCA Plot", 
+        x = paste0("PC1"),
+        y = paste0("PC2")
+    )
+}
+
+plotList[[tag]] <- plotList[[tag]] +  ggplot2::theme_bw() + ggplot2::theme(
+        axis.text.y   = ggplot2::element_text(size=8),
+        axis.text.x   = ggplot2::element_text(size=8),
+        axis.title.y  = ggplot2::element_text(size=12),
+        axis.title.x  = ggplot2::element_text(size=12),
+        axis.line = ggplot2::element_line(colour = "black"),
+        panel.border = ggplot2::element_rect(colour = "black", fill=NA, size=1),
+        plot.title = ggplot2::element_text(hjust = 0.5, size = 12)
+)
+
+
+###########################################################################
+## Save plot to file                                                     ##
+FNbase <- paste0("PCA12", VersionPdfExt)
+FN <- paste0(Obio@parameterList$reportFigDir, FNbase)
+FNrel <- paste0("report_figures/", FNbase)
+FNrelT <- paste0("report_tables/", FNbase)
+    
+pdf(FN)
+    print(plotList[[tag]])
+dev.off()
+##                                                                       ##
+###########################################################################
+    
+
+
+link <- paste0('<a href="https://biologic.crick.ac.uk/',project_id,'/pca?x_axis=PC1&y_axis=PC2', '" target="_blank">here</a>')
+
+figCap <- paste0(
+    "**Figure ",
+    figureCount,
+    ":** Variation in the first two PCA Dimensions. Download a pdf of this figure [here](", FNrel, "). ",
+    "Further PCA dimensions are available interacively ", link, ". " 
+)
+ 
+figureCount <- figureCount + 1
+    
+NewChnk <- paste0(
+paste0("### PCA_Plot \n"),
+            "\n```{r ReferencePCA1, results='asis', echo=F, eval=TRUE, warning=FALSE, fig.cap='",figCap,"'}\n",
+            "\n",
+            "\n print(plotList[['",tag,"']])",
+            "\n cat(  '\n')",
+            "\n\n\n```\n"   
+)
+
+chnkVec <- c(
+    chnkVec,
+    NewChnk
+)
+
+            
+
+## Done with PCA plot                                                        ##
+###############################################################################
+
+
+```
+
+
+```{r, echo=TRUE, eval=TRUE, warning=FALSE, results="asis", message=F}
+
+###############################################################################
+## Add Variation estimate plot                                               ##
+
+if (length(unique(dfDesign$dataseries)) > 1){
+    independentDesignColSector <- c(
+        "dataseries"
+    )
+} else {
+    independentDesignColSector <- as.vector(NULL, mode = "character")
+}
+
+if (length(dfDesign$sample.group) > 1){
+    independentDesignColSector <- c(
+        independentDesignColSector,
+        "sample.group"
+    )
+}
+
+if (length(dfDesign$replicate) > 1){
+    independentDesignColSector <- c(
+        independentDesignColSector,
+        "replicate"
+    )
+}
+
+pos <- grep("^f_", names(dfDesign))
+if (length(pos) > 0){
+  independentDesignColSector <- c(
+    names(dfDesign)[grep("^f_", names(dfDesign))]
+  )
+
+} else if (length(unique(dfDesign$dataseries)) > 1){
+    independentDesignColSector <- c(
+      "dataseries"
+    )
+}
+
+###############################################################################
+## Create independent variations plot                                        ##
+
+designColSelector = unique(c(independentDesignColSector, "sample.id"))    
+
+if (length(unique(dfDesign$sample.id)) > 42) {
+    rld <- vst(dds)    
+} else {
+    rld <- rlog(dds)    
+}
+rv = rowVars(assay(rld))
+
+## Select most variable genes
+select = order(rv, decreasing = TRUE)[seq_len(length(mostVarIDs))]
+dfTemp = t(assay(rld)[select, ])
+
+pc <- prcomp(dfTemp, center=TRUE, scale=FALSE)
+
+colDatMin = unique(dfDesign[, designColSelector])
+rownames(colDatMin) = as.vector(colDatMin$sample.id)
+
+colDatMin$sample.id <- NULL
+#colnames(colData)[1] = "condition"
+
+###############################################################################
+## Get PCA Loadings                                                          ##
+
+dfBase <- t(dfTemp)
+pcaGenes = prcomp(scale(dfBase))
+
+dfPcaGenes = data.frame(pcaGenes$x)
+
+if (ncol(dfPcaGenes) > 10){
+    dfPcaGenes <- dfPcaGenes[,1:10]
+}
+
+dfPcaGenes[[ alignmentGeneID]] <- row.names(dfPcaGenes)
+
+#Obio@dfPCAgenes <- dfPcaGenes
+dfPcaGenes <- Obio@dfPCAgenes
+
+## Retrieve pca loadings from previous step
+
+
+## Add Gene Annotation
+dfAnno <- unique(Obio@dfGeneAnnotation[,c( alignmentGeneID, geneIDcolumn)])
+dfAnno <- dfAnno[dfAnno[,alignmentGeneID] %in% dfPcaGenes[,alignmentGeneID], ]
+dfLoad <- merge(
+    dfAnno, 
+    dfPcaGenes, 
+    by.x = alignmentGeneID, 
+    by.y = alignmentGeneID, 
+    all = TRUE
+)
+
+dfLoad[is.na(dfLoad)] <- 0
+dfLoad[dfLoad[,geneIDcolumn] == 0, geneIDcolumn] <- dfLoad[dfLoad[,geneIDcolumn] == 0, alignmentGeneID]
+
+## Make Loadings Plot ##
+## Plot ##
+selXY <- c("contrast_P_PCA_estimatePCA1", "contrast_P_PCA_estimatePCA2", geneIDcolumn)
+dfSel <- unique(dfLoad[,selXY])
+#row.names(dfSel) <- dfSel$gene
+dfSel[["highlight"]] <- ""
+dfSel[["cat"]] <- ""
+dfSel[["selX"]] <- ""
+dfSel[["selY"]] <- ""
+dfSel <- dfSel[order(dfSel[,selXY[1]], decreasing = FALSE), ]
+dfSel[1:15, "highlight"] <- "+"
+    
+## Use two standard deviations for enrichment ##
+twoSD <- 2*sd(dfSel[,selXY[1]])
+twoSDxLine <- 2*sd(dfSel[,selXY[1]])
+gSvec <- dfSel[dfSel[,selXY[1]] < -1* twoSD, geneIDcolumn]
+    
+
+dfSel <- dfSel[order(dfSel[,selXY[1]], decreasing = TRUE), ]
+dfSel[1:15, "highlight"] <- "+"
+gSvec <- dfSel[dfSel[,selXY[1]] >  twoSD, geneIDcolumn]
+    
+    
+    
+    ## Now dim 2
+    dfSel <- dfSel[order(dfSel[,selXY[2]], decreasing = FALSE), ]
+    dfSel[1:15, "highlight"] <- "+"
+    
+    twoSD <- 2*sd(dfSel[,selXY[2]])
+    twoSDyLine <- 2*sd(dfSel[,selXY[2]])
+    gSvec <- dfSel[dfSel[,selXY[2]] < -1* twoSD, geneIDcolumn]
+    
+    
+    
+    
+    dfSel <- dfSel[order(dfSel[,selXY[2]], decreasing = TRUE), ]
+    dfSel[1:15, "highlight"] <- "+"
+    gSvec <- dfSel[dfSel[,selXY[2]] >  twoSD, geneIDcolumn]
+    
+    dfSel[["label"]] <- ""
+    dfSel[dfSel$highlight == "+", "label"] <- dfSel[dfSel$highlight == "+", geneIDcolumn]
+    
+    ## Done
+    tag <- "PCA_Loadings"
+    
+    colVec <- c("grey", "black")
+    names(colVec) <- c("", "Selected")
+    
+    plotList[[tag]] <- ggplot2::ggplot(data=dfSel, aes_string(x=selXY[1],y=selXY[2], label="label")
+    ) + geom_vline(xintercept = 0, color = "grey", size=0.5
+    ) + geom_hline(yintercept = 0, color = "grey", size=0.5
+    ) + geom_vline(xintercept = c(twoSDxLine, -1* twoSDxLine), color = "red", lty=2,size=0.5
+    ) + geom_hline(yintercept = c(twoSDyLine, -1* twoSDyLine), color = "red", lty=2,size=0.5
+    ) + geom_hline(yintercept = 0, color = "grey", size=0.5
+    ) + geom_point(col="black") + scale_color_manual(values=colVec
+    #) + ggtitle(paste0("PCA - Cell Level")
+    ) + theme_bw(
+    ) +  theme(
+        #axis.text.y   = element_blank(), # element_text(size=8),
+        #axis.text.x   = element_blank(), #element_text(size=8),
+        #axis.title.y  = element_blank(), #element_text(size=8),
+        #axis.title.x  = element_blank(), #element_text(size=8),
+        axis.line = element_line(colour = "black"),
+        legend.position = "none",
+        panel.border = element_rect(colour = "black", fill=NA, size=1),
+        #plot.title = element_text(hjust = 0.5, size = 12)
+    )  #+ guides(col = guide_legend(override.aes = list(shape = 16, size = legendDotSize)))
+    
+    #points <-  as.vector(unique(dfSel[dfSel$highlight=="+", geneIDcolumn]))
+    #plotListGene[[tag]] <- LabelPoints(plot = plotListGene[[tag]], points =points, repel = TRUE, xnudge = 0, ynudge = 0)
+    
+    plotList[[tag]] <-  plotList[[tag]]  + ggrepel::geom_text_repel(size = 3)
+    
+    
+    ## Save to file ##
+    FNbase <- paste0(tag, ".", selXY[1],".", selXY[2], VersionPdfExt)
+    FN <- paste0(Obio@parameterList$reportFigDir, FNbase)
+    FNrel <- paste0("report_figures/", FNbase)
+    
+    pdf(FN)
+        plot(plotList[[tag]])
+    dev.off()
+    
+    # dim1 <- gsub("PC_", "", xVec[i])
+    # dim2 <- gsub("PC_", "", yVec[i])
+    link <- paste0(
+        '<a href="https://',urlString,'/',
+        project_id,
+        '/scatterplot?x_axis=contrast_P_PCA_estimatePCA1&y_axis=contrast_P_PCA_estimatePCA2&highlight_gene=&cat_id=ag_lab_categories__10',
+        '" target="_blank">here</a>'
+    )
+    
+    figCap <- paste0(
+        "**Figure, " ,figureCount,":**Gene-level PCA plot for dimensions ", selXY[1], " and ", selXY[2], ". ",
+        ". An interactive version of this figure can be found ", link, ". "
+    )
+   
+    
+    NewChnk <- paste0(
+        "### PCA_Loadings \n",
+        "\n```{r PCA_gene_level , results='asis', echo=F, eval=TRUE, warning=FALSE, fig.cap='",
+        figCap,"'}\n",
+        "\n",
+        "\n print(plotList[['",tag,"']])",
+        "\n cat(  '\n')",
+        "\n\n\n```\n"   
+    )
+    
+    chnkVec <- c(
+        chnkVec,
+        NewChnk
+    )
+    
+    ## Done with genes                                                       ##
+    ###########################################################################
+    figureCount <- figureCount + 1
+
+
+###############################################################################
+## Add percent variaton per dimension plot                                   ##
+
+tag <- "Variation_Per_PCA_Dimension"
+    
+## Add percent variation plot ##
+PercentVariation <- round(100*Obio@PCApercentVar,1)
+PCdimension <- paste0("PC", 1:length(PercentVariation))  
+    
+df <- data.frame(
+    PercentVariation,
+    PCdimension
+)
+
+legendString <- ""
+if (nrow(df) > 20){
+    legendString <- paste0("Only the first 20 principal components out of ",nrow(df)," are shown in the figure. ")
+    df <- df[1:20,]
+    PCdimension <- PCdimension[1:20]
+    
+}
+
+df <- df[df$PercentVariation > 0,]
+
+plotList[[tag]] <- ggplot(
+    df, 
+    aes(PCdimension, PercentVariation)
+) + geom_col(
+) + scale_x_discrete(limits=PCdimension) +  theme(
+    axis.text.y   = element_text(size=8),
+    axis.text.x   = element_text(size=8),
+    axis.title.y  = element_text(size=8),
+    axis.title.x  = element_text(size=8),
+    axis.line = element_line(colour = "black"),
+    panel.border = element_rect(colour = "black", fill=NA, size=1),
+    plot.title = element_text(hjust = 0.5, size = 12)
+) + theme_bw()
+   
+###########################################################################
+## Save plot to file                                                     ##
+FNbase <- paste0(tag, VersionPdfExt)
+FN <- paste0(Obio@parameterList$reportFigDir, FNbase)
+FNrel <- paste0("report_figures/", FNbase)
+    
+pdf(FN)
+    plotList[[tag]]
+dev.off()
+##                                                                       ##
+###########################################################################
+    
+figCap <- paste0(
+    '**Figure ',
+    figureCount,
+    ':** Percent of variaton explained by each principal component. ',
+    legendString,
+    'Download a pdf of this figure <a href="',FNrel,'" target="_blank">here</a>. '
+)
+ 
+figureCount <- figureCount + 1
+   
+NewChnk <- paste0(
+    "### Amount of variation explained by each PCA Dimension ",
+    "\n```{r, results='asis', echo=F, eval=TRUE, warning=FALSE, fig.cap='",figCap,"'}\n",
+    "\n",
+    "\n print(plotList[['",tag,"']])",
+    "\n cat(  '\n')",
+    "\n\n\n```\n"   
+)
+
+chnkVec <- c(
+        chnkVec,
+        NewChnk
+)
+       
+    
+     
+## Done                                                                      ##
+###############################################################################
+
+
+
+
+
+covar_PC_frame <- rbind(
+    data.frame(
+        Component=1:(nrow(pc$x)-1),
+        spread(
+            data.frame(
+                v=names(colDatMin),
+                val=NA_real_
+            ),
+            key=v, 
+            value=val
+        )
+    )
+)
+
+
+tag <- "independentVariation"
+
+#if (mode == "independentVariation"){        
+    covar_PC_frame <- covar_PC_frame[c("Component", names(colDatMin))]
+            for (i in 1:nrow(covar_PC_frame)) {
+                ## old code from gavin below ##
+                fit <- lm(pc$x[,i]~., data=colDatMin)
+                covar_PC_frame[i,-1] <- drop1(fit, test="F")[names(covar_PC_frame)[-1],"Pr(>F)"]
+                
+                ## replaced 25032019 ##
+                # Fit each variable individually @
+            }
+    
+    
+    plotFrame <- gather(covar_PC_frame, key=Covariate, value=p, -Component)
+        plotFrame <- plotFrame[order(plotFrame$Component, decreasing = FALSE),]
+        
+        if (nrow(plotFrame) > 20) {
+            plotFrame <- plotFrame[1:(length(names(colDatMin)) * 20), ]
+        }
+        
+        ## Cut to 10 dimensions ##
+        
+        plotList[[tag]] <- ggplot(
+            plotFrame, 
+            aes(x=Component, y=Covariate, fill=-log10(p))) +
+            geom_raster() +
+            scale_fill_gradient(low="grey90", high="red") +
+            theme_classic() + 
+            coord_fixed() +
+            scale_x_continuous( labels = unique(plotFrame$Component), breaks = unique(plotFrame$Component)
+            )
+        
+        ###########################################################################
+    ## Save plot to file                                                     ##
+    FNbase <- paste0("Independent.variation.per.pca.dimension", VersionPdfExt)
+    FN <- paste0(Obio@parameterList$reportFigDir, FNbase)
+    FNrel <- paste0("report_figures/", FNbase)
+    
+    pdf(FN)
+        print(plotList[[tag]])
+    dev.off()
+    ##                                                                       ##
+    ###########################################################################
+    
+    figCap <- paste0(
+        '**Figure ',
+        figureCount,
+        ':** Independent sources of Variation per principal component. ',
+        'Download a pdf of this figure <a href="',FNrel,'" target="_blank">here</a>. '
+    )
+ 
+    figureCount <- figureCount + 1
+   
+    NewChnk <- paste0(
+            "### Independent Source of Variation Per PCA Component ",
+            "\n```{r var-per-pca-independent, results='asis', echo=F, eval=TRUE, warning=FALSE, fig.cap='",figCap,"'}\n",
+            "\n",
+            "\n print(plotList[['",tag,"']])",
+            "\n cat(  '\n')",
+            "\n\n\n```\n"   
+    )
+
+    chnkVec <- c(
+        chnkVec,
+        NewChnk
+    )
+        
+###############################################################################
+## Now the plot tolarating dependent variations                              ##
+
+tag <- "dependentVariation"
+    
+dependentDesignColSelector<- c(
+    independentDesignColSector,
+    names(Obio@dfDesign)[grep("comp_", names(dfDesign))],
+    names(Obio@dfDesign)[grep("LRT_", names(dfDesign))]
+)    
+    
+covar_PC_frame <- rbind(
+            data.frame(
+                Component=1:(nrow(pc$x)-1),
+                spread(
+                    data.frame(
+                        v=names(colDatMin),
+                        val=NA_real_
+                    ),
+                    key=v, 
+                    value=val
+                )
+            )
+        )
+
+mode <- "dependentVariation"
+    ## Do fitting individually ##
+    ## Check that all selVec entries exist
+        fitVars <- names(covar_PC_frame)
+        fitVars <- fitVars[fitVars != "Component"]
+        covar_PC_frame <- covar_PC_frame[c("Component", names(colDatMin))]
+
+
+        for (i in 1:nrow(covar_PC_frame)) {
+            ## old code from gavin below ##
+            for (j in 1:length(fitVars)){
+                corVar <- fitVars[j]
+
+                if (length(unique(dfDesign[, corVar])) > 1) {
+                    pcDim <- paste0("pc$x[,",i,"]")
+                    regressionFormula <- as.formula(paste(pcDim, corVar, sep="~"))
+                    fit <- lm(regressionFormula, data=colDatMin)
+                    pVal <- as.vector(summary(fit)$coefficients[,4][2])
+                    covar_PC_frame[i, corVar] <- pVal
+                }
+            }
+        }    
+        
+    plotFrame <- gather(covar_PC_frame, key=Covariate, value=p, -Component)
+    plotFrame <- plotFrame[order(plotFrame$Component, decreasing = FALSE),]
+
+    if (nrow(plotFrame) > 20) {
+        plotFrame <- plotFrame[1:(length(names(colDatMin)) * 20), ]
+    }
+    
+       
+    ## Cut to 10 dimensions ##
+    
+    plotList[[tag]] <- ggplot(
+        plotFrame, 
+        aes(x=Component, y=Covariate, fill=-log10(p))) +
+        geom_raster() +
+        scale_fill_gradient(low="grey90", high="red") +
+        theme_classic() + 
+        coord_fixed() +
+        scale_x_continuous( labels = unique(plotFrame$Component), breaks = unique(plotFrame$Component)
+        ) +  ggplot2::theme(
+        axis.text.y   = ggplot2::element_text(size=8),
+        axis.text.x   = ggplot2::element_text(size=8),
+        axis.title.y  = ggplot2::element_text(size=8),
+        axis.title.x  = ggplot2::element_text(size=8),
+        axis.line = ggplot2::element_line(colour = "black"),
+        panel.border = ggplot2::element_rect(colour = "black", fill=NA, size=1),
+        plot.title = ggplot2::element_text(hjust = 0.5, size = 12)
+    ) + ggplot2::labs(title = "Independent Sources of Variation per PCA Component")
+        
+        ###########################################################################
+    ## Save plot to file                                                     ##
+    FNbase <- paste0("Dependent.permissive.variation.per.pca.dimension", VersionPdfExt)
+    FN <- paste0(Obio@parameterList$reportFigDir, FNbase)
+    FNrel <- paste0("report_figures/", FNbase)
+    
+    pdf(FN)
+        plotList[[tag]]
+    dev.off()
+    ##                                                                       ##
+    ###########################################################################
+    
+    figCap <- paste0(
+        '**Figure ',
+        figureCount,
+        ':** Dependent-tolerant sources of Variation per principal component. ',
+        'Download a pdf of this figure <a href="',FNrel,'" target="_blank">here</a>. '
+    )
+ 
+    figureCount <- figureCount + 1
+   
+    NewChnk <- paste0(
+            "### Dependent-tolerant Source of Variation Per PCA Component ",
+            "\n```{r, results='asis', echo=F, eval=TRUE, warning=FALSE, fig.cap='",figCap,"'}\n",
+            "\n",
+            "\n print(plotList[['",tag,"']])",
+            "\n cat(  '\n')",
+            "\n\n\n```\n"   
+    )
+
+    chnkVec <- c(
+        chnkVec,
+        NewChnk
+    )
+       
+    
+    
+## Done                                                                      ##
+###############################################################################
+        
+
+## Add PCA loadings
+
+
+    ## Add genes driving this PCA dimension ## 
+#     if (!is.null(Obio@plotCollection$PCA1_PCA_fitting)){
+#         
+#         pFit <- Obio@plotCollection$PCA1_PCA_fitting
+#         
+#         
+#         ###########################################################################
+#         ## Save plot to file                                                     ##
+#         FNbase <- paste0("Variation.per.pca.dimension.", VersionPdfExt)
+#         FN <- paste0(Obio@parameterList$reportFigDir, FNbase)
+#         FNrel <- paste0("report_figures/", FNbase)
+#     
+#         pdf(FN)
+#             print(pFit)
+#         dev.off()
+#         ##                                                                       ##
+#         ###########################################################################
+#         link <- paste0(
+#             "https://biologic.crick.ac.uk/",
+#             project_id,
+#             "/scatterplot?x_axis=contrast_P_PCA_estimatePCA1&y_axis=contrast_P_lg10p_PCA1&highlight_gene=&cat_id=ag_lab_categories__10")
+#     figCap <- paste0(
+#         "**Figure ",
+#         figureCount,
+#         ":** Genes driving principal components. ",
+#         "Download a pdf of this figure [here](", FNrel, "). ",
+#         "Genes driving this - and other PCA dimensions can be accessed interactively [here](", link, "). " 
+#     )
+#  
+#     figureCount <- figureCount + 1
+#    
+#     NewChnk <- paste0(
+#             "### Genes Driving PCA Components ",
+#             "\n```{r var-per-pca-genes, results='asis', echo=F, eval=TRUE, warning=FALSE, fig.cap='",figCap,"'}\n",
+#             "\n",
+#             "\n print(pFit)",
+#             "\n cat(  '\n')",
+#             "\n\n\n```\n"   
+#     )
+#     chnkVec <- c(
+#         chnkVec,
+#         NewChnk
+#     )
+#         
+#     }
+# }
+## Done adding PCA plots                                                     ##
+###############################################################################
+if (length(plotList) > 2){
+    tabVar <- ".tabset .tabset-fade .tabset-dropdown"
+} else {
+    tabVar <- ".tabset .tabset-fade .tabset-pills"
+}
+
+```
+
+## Principal Component Analysis (PCA) {`r tabVar`}
+
+A birds eye view of your data can be obtained by looking at the results of the principal component analysis (PCA). The principal component analysis looks at your count dataset as a whole and determines how 'close' two samples are in terms of overall data structure. First of all, you want your replicated to cluster together. After that, you will be able to determine how different various sets of sample groups are.
+
+A more detailed explanation on PCA is give in this [PCA video](https://www.youtube.com/watch?v=_UVHneBUBW0&feature=youtu.be).
+
+```{r, echo=FALSE, eval=TRUE, warning=FALSE, results="asis"}
+cat(paste(knitr::knit(text = chnkVec, quiet = T), collapse = '\n'))
+```

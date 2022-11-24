@@ -1,0 +1,328 @@
+###############################################################################
+## Create settings file                                                      ##
+
+##                                                                           ##
+###############################################################################
+
+
+
+
+## Create analysis 
+samplesheetFN <-     "/camp/stp/babs/working/bioinformatics/projects/sahaie/colin.ratcliffe/Capivasertib_resistant_in_triple_negative_breast_tumour_organoids/babs/docs/asf_samplesheet.csv"
+
+dfSampleSheet <- read.delim(
+    samplesheetFN, 
+    header = T, 
+    sep = ",",
+    stringsAsFactors = F
+)
+
+names(dfSampleSheet) <- gsub("sample", "sampleID", names(dfSampleSheet))
+
+RSEM_folder <- "/camp/stp/babs/working/bioinformatics/projects/sahaie/colin.ratcliffe/Capivasertib_resistant_in_triple_negative_breast_tumour_organoids/babs/nfcore/results/GRCh38/star_rsem"
+## Done                                                                      ##
+###############################################################################
+
+###############################################################################
+## Create basedesign FN                                                      ##
+experimentalTableFN <- "/camp/stp/babs/working/bioinformatics/projects/sahaie/colin.ratcliffe/Capivasertib_resistant_in_triple_negative_breast_tumour_organoids/babs/docs/experiment_table.csv"
+
+dfBaseDesign <- read.delim(
+    experimentalTableFN, 
+    sep = ",",
+    header = T,
+    stringsAsFactors = F
+)
+
+names(dfBaseDesign) <- gsub("^ID$", "sampleID", names(dfBaseDesign))
+names(dfBaseDesign) <- gsub("Treatment.Group", "sample.group", names(dfBaseDesign))
+names(dfBaseDesign) <- gsub("Technical.Replicate.Group", "f_replicate", names(dfBaseDesign))
+names(dfBaseDesign) <- gsub("Date.Collected", "f_date_collected", names(dfBaseDesign))
+dfBaseDesign$X.RNA. <- NULL
+dfBaseDesign$Volume <- NULL
+dfBaseDesign[["sample.id"]] <- paste0("S_", dfBaseDesign$sample.group, "_", dfBaseDesign$f_replicate)
+
+## add additional columns
+dfDesign <- biologicSeqTools2::completeDesignBasedOnSampleID(dfBaseDesign)
+
+
+
+comparison <- "comp_1"
+dfDesign[[comparison]] <- ""
+dfDesign[dfDesign$sample.group %in% c("S_Capivasertib"), comparison] <- "1_Capivasertib"
+dfDesign[dfDesign$sample.group %in% c("S_DMSO"), comparison] <- "2_DMSO"
+
+
+comparison <- "comp_2"
+dfDesign[[comparison]] <- ""
+dfDesign[dfDesign$sample.group %in% c("S_Parental"), comparison] <- "1_Parental"
+dfDesign[dfDesign$sample.group %in% c("S_DMSO"), comparison] <- "2_DMSO"
+
+
+comparison <- "comp_3"
+dfDesign[[comparison]] <- ""
+dfDesign[dfDesign$sample.group %in% c("S_Capivasertib"), comparison] <- "1_Capivasertib"
+dfDesign[dfDesign$sample.group %in% c("S_Parental"), comparison] <- "2_Parental"
+
+dfDesign[["LRT_Technical_Replicate"]] <- paste0("R", dfDesign$f_replicate)
+dfDesign[["LRT_Treatment_Group"]] <- dfDesign$sample.group
+
+
+designFN <- paste0(pipelineList[["folder"]], "basedata/RN21261.design.table.txt")
+
+write.table(
+    dfDesign,
+    designFN,
+    sep = "\t",
+    row.names=F
+)
+
+pipelineList[["designFN"]] <- designFN
+
+
+## Done                                                                      ##
+###############################################################################
+
+###############################################################################
+## model FN                                                                  ##
+
+###############################################################################
+## Create Formula Matrix                                                     ##
+
+comparisonID <- names(dfDesign)[grep("comp_", names(dfDesign))]
+comparison <- rep("", length(comparisonID))
+for (i in 1:length(comparisonID)){
+    contrasts = sort(as.vector(unique(dfDesign[,comparisonID[i]])), decreasing = FALSE)
+    contrasts = contrasts[contrasts != ""]
+    
+    contrasts <- gsub("^1_", "", contrasts)
+    contrasts <- gsub("^2_", "", contrasts)
+    
+    #Create contrast vector
+    #contrast.vector = c([condition],[1_diff.gene set, e.g. mt],[2_baseline, e.g. wt])
+    #if (contrasts[2] != "scr"){
+    #  contrasts = rev(contrasts)
+    #}
+    sel.col = contrasts
+    
+    contrast.vector = append("condition", contrasts)
+    colName = paste(contrasts, collapse = "_vs_")
+    comparison[i] <- colName
+}
+
+test <- rep("Wald", length(comparison))
+type <- rep("DGE", length(comparison))
+
+model <- rep("~ condition", length(comparison))
+# model <- c(
+#     "~ condition",
+#     "~ condition",
+#     "~ condition",
+#     "~ condition",
+#     "~ condition",
+#     "~ condition",
+#     "~ condition",
+#     "~ condition",
+#     "~ condition",
+#     "~ condition",
+#     "~ condition",
+#     "~ condition",
+#     "~ condition + f_timepoint + condition:f_timepoint",
+#     "~ condition + f_timepoint + condition:f_timepoint",
+#     "~ condition + f_timepoint + condition:f_timepoint",
+#     "~ condition + f_timepoint + condition:f_timepoint"
+# )
+reducedModel <- rep("", length(comparison))
+normalizeAllSamplesTogether <- rep(FALSE, length(comparison))
+betaPrior <- rep(TRUE, length(comparison))
+
+
+dfModel <- data.frame(
+    comparison,
+    comparisonID,
+    test,
+    type,
+    model,
+    reducedModel,
+    normalizeAllSamplesTogether,
+    betaPrior, stringsAsFactors = TRUE
+)
+
+# comparisonID <- c(
+#     "LRT_genotype",
+#     "LRT_Naive_Infected",
+#     "LRT_Ly6Hi_Low",
+#     "LRT_cGCSF",
+#     "LRT_WtNaHi_WTinfLo_WTclGcLo",
+#     "LRT_WtNaHi_WTinfLo_TinfHi"
+# )
+# 
+comparisonID <- names(dfDesign)[grep("LRT_", names(dfDesign))]
+comparison <- names(dfDesign)[grep("LRT_", names(dfDesign))]
+test <- rep("LRT", length(comparison))
+type <- rep("LRT", length(comparison))
+model <- c(
+    "~ LRT_Treatment_Group",
+    "~ f_replicate"
+)
+# 
+# 
+reducedModel <- c(
+    "~ 1",
+    "~ 1"
+)
+# 
+normalizeAllSamplesTogether <- rep(FALSE, length(comparison))
+betaPrior <- rep("", length(comparison))
+
+dfMLRT <- data.frame(
+    comparison,
+    comparisonID,
+    test,
+    type,
+    model,
+    reducedModel,
+    normalizeAllSamplesTogether,
+    betaPrior,
+    stringsAsFactors = FALSE
+)
+
+dfModel <- rbind(
+    dfModel,
+    dfMLRT
+)
+
+#Obio@dfModel <- dfModel
+
+
+#model.file <- paste0("design/dge.model.file.txt")
+
+modelFN <- paste0(pipelineList[["folder"]], "basedata/RN21261.model.table.txt")
+
+#model.file <- "design/dge.model.table.txt"
+
+write.table(dfModel ,modelFN , row.names = FALSE, sep = "\t")
+
+
+###############################################################################
+## Read spec file                                                            ##
+specFN <- "/camp/stp/babs/working/bioinformatics/projects/sahaie/colin.ratcliffe/Capivasertib_resistant_in_triple_negative_breast_tumour_organoids/babs/docs/analysis.spec"
+
+
+#specs <- specification(
+sample_sets =list( 
+    "all" = sample_set(
+        subset = TRUE,
+        transform = mutate( Treatment.Group = factor( treatment, levels = c( "DMSO", "Parental", "Capivasertib" ) ) ),
+        transform = mutate( Technical.Replicate.Group = factor( Technical.Replicate.Group ) ),
+        models = list(
+            accurate = model(
+                design = ~ Technical.Replicate.Group + Treatment.Group,
+                comparisons = list(
+                    mult_comp(revpairwise ~ Treatment.Group),
+                    compLRT_Technical.Replicate.Group = ~Treatment.Group,
+                    compLRT_Treatment.Group = ~Technical.Replicate.Group,
+                )
+            )
+        )
+    )
+)
+#)
+
+
+
+
+
+## Done                                                                      ##
+###############################################################################
+
+tpmFN <- "/camp/stp/babs/working/bioinformatics/projects/sahaie/colin.ratcliffe/Capivasertib_resistant_in_triple_negative_breast_tumour_organoids/babs/outputs/data/rsem.merged.gene_tpm.tsv"
+
+dfTPM <- read.delim(
+    tpmFN, 
+    sep = "\t",
+    stringsAsFactors = F,
+    header=T
+)
+
+dfTPM$gene_name <- NULL
+dfTPM$transcript_id.s. <- NULL
+names(dfTPM) <- gsub("gene_id", "ENSMUSG", names(dfTPM))
+
+tpmFNout <- "../../basedata/RN21261.tpm.table.txt"
+write.table(dfTPM, tpmFNout, sep="\t", row.names=F)
+
+pipelineList[["TpmTableFN"]] <- 
+
+###############################################################################
+## Create input CSV                                                          ##
+pipelineList <- list()
+
+folder <- unlist(strsplit(getwd(), '/'))
+folder <- paste0(paste0(folder[-c(length(folder), length(folder)-1)], collapse = '/'), "/")
+pipelineList[["folder"]] <- folder
+
+tpmFN <- "/camp/stp/babs/working/bioinformatics/projects/sahaie/colin.ratcliffe/Capivasertib_resistant_in_triple_negative_breast_tumour_organoids/babs/outputs/data/rsem.merged.gene_tpm.tsv"
+
+dfTPM <- read.delim(
+    tpmFN, 
+    sep = "\t",
+    stringsAsFactors = F,
+    header=T
+)
+
+dfTPM$gene_name <- NULL
+dfTPM$transcript_id.s. <- NULL
+names(dfTPM) <- gsub("gene_id", "ENSMUSG", names(dfTPM))
+
+tpmFNout <- paste0(pipelineList[["folder"]] , "basedata/RN21261.tpm.table.txt")
+write.table(dfTPM, tpmFNout, sep="\t", row.names=F)
+
+pipelineList[["TpmTableFN"]] <- tpmFNout
+
+## Read RSEM table 
+rsem.sample.folder <- "/camp/stp/babs/working/bioinformatics/projects/sahaie/colin.ratcliffe/Capivasertib_resistant_in_triple_negative_breast_tumour_organoids/babs/nfcore/results/GRCh38/star_rsem"    
+
+countTableFN <- paste0(pipelineList[["folder"]], "basedata/RN21261.rsem.table.txt")
+
+pipelineList[["countTableFN"]] <- countTableFN
+
+
+files <- paste0(
+    rsem.sample.folder, "/",
+    list.files(rsem.sample.folder )[grep(".genes.results", list.files(rsem.sample.folder ))]
+)
+
+files = paste(
+    files,
+    collapse = " "
+)
+
+RSEM.CMD = paste(
+    "module load RSEM/1.2.31-foss-2016b;",
+    "rsem-generate-data-matrix ",
+    files,
+    " > ",
+    pipelineList[["countTableFN"]],
+    sep=""
+)
+
+# dfRSEM <- biologicSeqTools2::readAndPrepareCountMatrix(
+#     count.data.fn = pipelineList[["countTableFN"]] ,
+#     string.to.be.deleted.in.raw.counts.columns = "",
+#     df.design = Obio@dfDesign
+# )
+
+
+
+pipelineList[[DEseq2_DGE_result_folder]] <- NULL # path/to/result/folder"
+pipelineList[[DEseq2_LRT_result_folder]] <- NULL # path/to/result/folder
+
+pipelineList[[modelFN]] <- "path/to/model/file.name.txt"
+pipelineList[[baseDesignFN]] <- "path/to/base.design/file.name.txt"
+
+countTableFN <- "path/to/Tpm/table"
+
+## Done                                                                      ##
+###############################################################################
+

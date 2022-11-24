@@ -1,0 +1,158 @@
+---
+output:
+  bookdown::html_document2:
+    includes:
+      in_header: header.html
+  bookdown::gitbook:
+    includes:
+      in_header: header.html
+
+---
+```{r, include=FALSE}
+###############################################################################
+## Recommended R-version                                                     ##
+
+# module purge;source /camp/stp/babs/working/software/modulepath_new_software_tree_2018-08-13;module load pandoc/2.2.3.2-foss-2016b;ml R/4.0.3-foss-2020a
+
+## Done                                                                      ##
+###############################################################################
+
+
+###############################################################################
+## Set the environment                                                       ##
+
+# if (!require("remotes")){
+#   install.packages("remotes")
+# }
+# 
+# remotes::install_github("rstudio/renv")
+
+if (!file.exists("renv.lock")){
+    renv::init(
+    )
+} else {
+    renv::restore(
+        #project = "../../",
+        prompt=FALSE
+    )
+}
+
+
+#renv::install("bioc::DESeq2")
+#renv::install("bioc::clusterProfiler")
+#renv::install("decusInLabore/biologicSeqTools2")
+#renv::install("jokergoo/ComplexHeatmap")
+
+## Done                                                                      ##
+###############################################################################
+```
+
+# Bulk RNA-Seq Analysis
+
+  This is a _sample_ book written in **Markdown**. You can use anything that Pandoc's Markdown supports, e.g., a math equation $a^2 + b^2 = c^2$.
+
+The **bookdown** package can be installed from CRAN or Github:
+
+```{r eval=FALSE}
+install.packages("bookdown")
+# or the development version
+# devtools::install_github("rstudio/bookdown")
+```
+
+Remember each Rmd file contains one and only one chapter, and a chapter is defined by the first-level heading `#`.
+
+To compile this example to PDF, you need XeLaTeX. You are recommended to install TinyTeX (which includes XeLaTeX): <https://yihui.name/tinytex/>.
+
+```{r include=FALSE}
+# automatically create a bib database for R packages
+knitr::write_bib(c(
+  .packages(), 'bookdown', 'knitr', 'rmarkdown'
+), 'packages.bib')
+```
+
+```{r create_report_params, eval=T, results="asis"}
+
+## Try to retrieve project data from db ##
+db.pwd2 <- "zU3ufd9L"
+db.user2 <- "reader"
+host2 <- "clvd1-db-u-p-17.thecrick.org"
+projectParams <- Obio@documentationParams
+
+tryCatch({
+    dbDB = DBI::dbConnect(
+        drv = RMySQL::MySQL(),
+        user = db.user2,
+        password = db.pwd2,
+        host = host2,
+        dbname = "clarity_shadow"
+    )
+    dfProposal <-  DBI::dbGetQuery(
+        dbDB,
+        paste0("SELECT * FROM clarify_asf_proposals WHERE project_name ='",Obio@projectDetailList$lims.id,"'")
+    )
+    dbDisconnect(dbDB)
+}, error = function(x) {
+    message("Project Database could not be reached or has no entry in Obio@parameterList$lims.id for this analysis.")
+})
+
+###############################################################################
+## Helper
+firstup <- function(x) {
+    substr(x, 1, 1) <- toupper(substr(x, 1, 1))
+    x
+}
+##
+###############################################################################
+
+
+if (exists("dfProposal")){
+    if (!is.na(dfProposal[1,"ProjectAlias"]) & dfProposal[1,"ProjectAlias"] != ""){
+        projectParams[["title"]] = paste0(dfProposal[1,"ProjectAlias"], " - ", dfProposal[1,"project_name"])
+    }
+
+    if (!is.na(dfProposal[1,"project_user"]) & dfProposal[1,"project_user"] != ""){
+        labString <- firstup(dfProposal[1,"user_lab"])
+        labString <- substr(labString, 1, (nchar(labString) - 1))
+
+        projectParams[["subtitle"]] = paste0(labString, " Lab - ", dfProposal[1,"project_user"])
+        projectParams[["subtitle"]] <- gsub("^ Lab - ", "", projectParams[["subtitle"]])
+
+    }
+
+    if (!is.na(dfProposal[1,"proposal_text"]) & dfProposal[1,"proposal_text"] != ""){
+        projectParams[["abstract"]] = dfProposal[1,"proposal_text"]
+
+
+    }
+}
+
+## Escape all special characters
+projectParams <- lapply(
+  projectParams, function(x)
+  #gsub("([.|()\\^{}+$*?]|\\[|\\])", "\\\\\1", x)
+  gsub("([.|()/\\^{}+$*?]|\\[|\\])", " ", x)
+)
+
+projectParams <- lapply(
+  projectParams, function(x)
+  #gsub("([.|()\\^{}+$*?]|\\[|\\])", "\\\\\1", x)
+  gsub("\\\n", " ", x)
+)
+
+
+```
+
+
+
+---
+title: "`r projectParams$title`"
+subtitle:  "`r projectParams$subtitle`"
+author:
+    - Bioinformatics: Stefan Boeing^[The Francis Crick Institute, stefan.boeing@crick.ac.uk]
+date: 'Compiled: `r format(Sys.Date(), "%B %d, %Y")`'
+
+abstract: |
+    "`r projectParams$abstract`"
+
+description: "This is a minimal example of using the bookdown package to write a book. The output format for this example is bookdown::gitbook."
+---

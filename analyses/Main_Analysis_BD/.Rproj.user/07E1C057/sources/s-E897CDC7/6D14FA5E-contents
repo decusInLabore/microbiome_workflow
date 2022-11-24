@@ -1,0 +1,303 @@
+
+---
+output: 
+    html_document:
+        code_folding: hide
+        df_print: tibble
+        highlight: default
+        theme: paper
+        toc: true
+        toc_depth: 5
+        toc_float: true
+        css: src/assets/style/style.css
+
+always_allow_html: yes
+---
+
+```{r setup, include=FALSE}
+###############################################################################
+## Recommended R-version                                                     ##
+
+# module purge;source /camp/stp/babs/working/software/modulepath_new_software_tree_2018-08-13;module load pandoc/2.2.3.2-foss-2016b;ml R/4.0.3-foss-2020a
+
+# Check processes 
+# lsof /dev/pts/*
+
+## Done                                                                      ##
+###############################################################################
+
+
+###############################################################################
+## Set the environment                                                       ##
+
+if (!require("remotes")){
+  install.packages("remotes")
+}
+
+remotes::install_github("rstudio/renv")
+
+if (!file.exists("renv.lock")){
+    renv::init()
+} else {
+    renv::restore(prompt=FALSE)
+}
+
+
+#renv::install("bioc::DESeq2")
+#renv::install("bioc::clusterProfiler")
+#renv::install("decusInLabore/biologicSeqTools2")
+#renv::install("jokergoo/ComplexHeatmap")
+
+## Done                                                                      ##
+###############################################################################
+
+
+###############################################################################
+## Set knitr options                                                         ##
+
+knitr::opts_chunk$set(
+    tidy = F,
+    tidy.opts = list(width.cutoff = 120),
+    message = FALSE,
+    warning = FALSE,
+    #dev="png"
+    dev = "png", dev.args = list(type = "cairo-png"),
+    fig.width=7,  # default setting is 7 
+    fig.height=5,  # default setting is 5
+    fig.retina=1  # default setting is 1
+    #fig.path = "images/"
+)
+
+##                                                                           ##
+###############################################################################
+
+###############################################################################
+## Set global variables                                                      ##
+
+cDir <- getwd()
+setwd("..")
+workdir <- getwd()
+setwd(cDir)
+
+figureCount <- 1
+tableCount <- 1
+upload.results.to.database <- TRUE
+shinyBaseServerURL <- "shiny-bioinformatics.crick.ac.uk"
+#urlString <- "biologic.crick.ac.uk"
+
+## Done                                                                      ##
+###############################################################################
+
+
+###############################################################################
+## Load biologic object from part A                                          ##
+
+## Check if only one project is present ##
+checkFiles <- list.files("..")
+pos <- grep("bioLOGIC.Robj$", checkFiles)
+
+if (length(pos) > 1){
+    eMessage <- paste0("More than one bioLOGIC.Robj file is present in ", getwd(), ". Please move the obsolete biologic.Robj file to a different folder.")
+    stop(eMessage)
+}
+
+FN <- paste0("../", list.files("..")[grep("bioLOGIC.Robj", list.files(".."))])
+load(FN)
+## Done                                                                      ##
+###############################################################################
+
+```
+
+
+<!-- Essential: Load Obio Data Object ---------------------------------------->
+```{r child = 'src/modules/part_B/B.1.set.parameters.Rmd', eval=TRUE}
+```
+
+<!-- Optional set data access parameters for R-users ------------------------->
+```{r child = 'src/modules/part_B/B.1.2.set.data.access.parameters.Rmd', eval=TRUE}
+```
+
+<!-- Optional: Retrieve reference gene sets----------------------------------->
+```{r child = 'src/modules/part_B/B.2.retrieve.reference.gene.sets.Rmd', eval=TRUE}
+```
+
+<!-- Essential: Add RSEM count matrix and TPM matrix ------------------------->
+```{r child = 'src/modules/part_A/A.1.add.data.to.analysis.object.Rmd', eval=TRUE}
+```
+
+<!-- Optional: Add alignment summary to report-------------------------------->
+<!-- Modify - copy nf-core outputs            -------------------------------->
+```{r child = 'src/modules/part_B/B.3.alignment.summary.Rmd', eval=FALSE}
+```
+
+<!-- Optional 4: (creates output only): Analysis Guide -->
+```{r child = 'src/modules/part_B/B.4.analysis.guide.Rmd', eval=TRUE}
+```
+
+<!-- Optional 5: (creates output only): Display design table -->
+```{r child = 'src/modules/part_B/B.5.display.design.table.and.formula.table.Rmd', eval=TRUE}
+```
+
+<!-- Essential: DEseq2 analysis -->
+<!-- Creates PCA -->
+```{r child = 'src/modules/part_B/B.6.DEseq2.PCA.Rmd', eval=TRUE}
+```
+
+<!-- Essential: DEseq2 analysis -->
+<!-- Creates LRT and DGE analyses -->
+```{r child = 'src/modules/part_B/B.7.DEseq2.LRT.DGE.Rmd', eval=TRUE}
+```
+
+<!-- Optional 8: (creates output only): Sample Characterization -->
+<!-- Coefficient of variation and cluster dendrogram -->
+```{r child = 'src/modules/part_B/B.8.sample.characterization.Rmd', eval=TRUE}
+```
+
+<!-- Optional 9: (output only): PCA sample characterization Chapter/Module -->
+```{r child = 'src/modules/part_B/B.9.pca.characterization.Rmd', eval=TRUE}
+```
+
+<!-- Optional 10: (output only): Gene Category Heatmaps Chapter/Module -->
+```{r child = 'src/modules/part_B/B.10.heatmaps.Rmd', eval=TRUE}
+```
+
+<!-- Optional 11: (output only): MA- and Volcanoplot Chapter/Module -->
+```{r child = 'src/modules/part_B/B.11.volcanoplots.ma.plots.Rmd', eval=TRUE}
+```
+
+<!-- Optional 12: (output only): Category Enrichment Hypergeometric Test Chapter/Module -->
+```{r child = 'src/modules/part_B/B.12.cat.enrichment.HG.Rmd', eval=TRUE}
+```
+
+<!-- Optional 13: (output only): Category Enrichment fGSEA Method Chapter/Module -->
+```{r child = 'src/modules/part_B/B.13.cat.enrichment.fGSEA.Rmd', eval=TRUE}
+```
+
+
+<!-- Optional 12: (output only): LRT Analysis Chapter/Module -->
+```{r child = 'src/modules/part_B/B.14.LRT.plots.Rmd', eval=TRUE}
+```
+
+<!-- Optional 13: (output only): Documentation Chapter/Module -->
+```{r child = 'src/modules/part_B/B.15.bulkRNAseq.documentation.Rmd', eval=TRUE}
+```
+
+```{r, echo=TRUE, eval=TRUE, warning=FALSE, results="hide"}
+###############################################################################
+## Save Obio Object                                                          ##
+
+
+save(Obio,
+     file = paste0(
+         Obio@parameterList$localWorkDir,
+         Obio@parameterList$project_id,
+         ".bioLOGIC.Robj"
+     )
+)
+
+print("R bioLOGIC object saved.")
+
+##                                                                           ##
+###############################################################################
+
+
+```
+
+
+
+
+
+
+```{r create_report_params, eval=T, results="asis"}
+
+## Try to retrieve project data from db ##
+db.pwd2 <- "zU3ufd9L"
+db.user2 <- "reader"
+host2 <- "clvd1-db-u-p-17.thecrick.org"
+projectParams <- Obio@documentationParams
+
+tryCatch({
+    dbDB = DBI::dbConnect(
+        drv = RMySQL::MySQL(), 
+        user = db.user2, 
+        password = db.pwd2, 
+        host = host2, 
+        dbname = "clarity_shadow"
+    )
+    dfProposal <-  DBI::dbGetQuery(
+        dbDB, 
+        paste0("SELECT * FROM clarify_asf_proposals WHERE project_name ='",Obio@projectDetailList$lims.id,"'")
+    )
+    dbDisconnect(dbDB)
+}, error = function(x) {
+    message("Project Database could not be reached or has no entry in Obio@parameterList$lims.id for this analysis.")
+})
+
+###############################################################################
+## Helper
+firstup <- function(x) {
+    substr(x, 1, 1) <- toupper(substr(x, 1, 1))
+    x
+}
+##
+###############################################################################
+
+
+if (exists("dfProposal")){
+    if (!is.na(dfProposal[1,"ProjectAlias"]) & dfProposal[1,"ProjectAlias"] != ""){
+        projectParams[["title"]] = paste0(dfProposal[1,"ProjectAlias"], " - ", dfProposal[1,"project_name"])
+    }
+    
+    if (!is.na(dfProposal[1,"project_user"]) & dfProposal[1,"project_user"] != ""){
+        labString <- firstup(dfProposal[1,"user_lab"])
+        labString <- substr(labString, 1, (nchar(labString) - 1))
+      
+        projectParams[["subtitle"]] = paste0(labString, " Lab - ", dfProposal[1,"project_user"])
+        projectParams[["subtitle"]] <- gsub("^ Lab - ", "", projectParams[["subtitle"]])
+        
+    }
+    
+    if (!is.na(dfProposal[1,"proposal_text"]) & dfProposal[1,"proposal_text"] != ""){
+        projectParams[["abstract"]] = dfProposal[1,"proposal_text"]
+       
+        
+    }
+}
+   
+## Escape all special characters
+projectParams <- lapply(
+  projectParams, function(x) 
+  #gsub("([.|()\\^{}+$*?]|\\[|\\])", "\\\\\1", x)
+  gsub("([.|()/\\^{}+$*?]|\\[|\\])", " ", x)
+) 
+
+projectParams <- lapply(
+  projectParams, function(x) 
+  #gsub("([.|()\\^{}+$*?]|\\[|\\])", "\\\\\1", x)
+  gsub("\\\n", " ", x)
+) 
+
+
+```
+
+
+
+## Documentation
+```{r documentation, eval=TRUE, echo=F, results=T, error=F}
+#renv::snapshot(prompt=FALSE)
+
+sessionInfo()
+```
+
+---
+title: "`r projectParams$title`"
+subtitle:  "`r projectParams$subtitle`"
+author:
+    - Bioinformatics: Stefan Boeing^[The Francis Crick Institute, stefan.boeing@crick.ac.uk]
+date: 'Compiled: `r format(Sys.Date(), "%B %d, %Y")`'
+
+abstract: |
+    "`r projectParams$abstract`"
+
+
+---

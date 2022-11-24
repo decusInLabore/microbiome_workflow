@@ -1,0 +1,48 @@
+<!-- Set Parameters Module -->
+<!-- Set the chnkPrefix to make all chunks unique in the overall folder -->
+```{r partB_retrieve_reference_gene_sets_init, echo=FALSE, eval=TRUE, warning=FALSE}
+chnkPrefix <- "B2.ref.gmt."
+VersionPdfExt <- VersionPdfExt <- paste0(".",chnkPrefix,"V", gsub("-", "", Sys.Date()), ".pdf")
+```
+
+
+
+```{r partB_create_sample_list, echo=FALSE, eval=TRUE, warning=FALSE, results=F}
+###############################################################################
+## Load reference datasets                                                   ##
+Obio@dataTableList[["referenceList"]] <- NULL
+if (!is.null(Obio@dbDetailList$host)){
+    if (Obio@parameterList$geneIDcolumn != "mgi_symbol" & Obio@parameterList$geneIDcolumn != "hgnc_symbol") {
+        queryGS <- "hgnc_symbol" 
+    } else {
+            queryGS <- Obio@parameterList$geneIDcolumn
+    }
+  
+    Obio@dataTableList[["referenceList"]] <- list(
+        # "s.genes" = retrieve.gene.category.from.db(
+        #                 cat_id = "ag_lab_categories__41",
+        #                 password = db.pwd,
+        #                 gene.symbol = queryGS,
+        #                 user = Obio@dbDetailList$db.user,
+        #                 host = Obio@dbDetailList$host
+        #             ),
+        # "g2m.genes" = retrieve.gene.category.from.db(
+        #                   cat_id = "ag_lab_categories__42",
+        #                   password = db.pwd,
+        #                   gene.symbol = queryGS,
+        #                   user = Obio@dbDetailList$db.user,
+        #                   host = Obio@dbDetailList$host
+        #             ),
+        "TFs" = retrieve.gene.category.from.db(
+                          cat_id = "ag_lab_categories__10",
+                          password = Obio@dbDetailList[["db.pwd"]],
+                          gene.symbol = queryGS,
+                          user = Obio@dbDetailList$db.user,
+                          host = Obio@dbDetailList$host
+        )
+        
+      )
+}
+## Done create cellRanger QC plots                                           ##
+###############################################################################
+```

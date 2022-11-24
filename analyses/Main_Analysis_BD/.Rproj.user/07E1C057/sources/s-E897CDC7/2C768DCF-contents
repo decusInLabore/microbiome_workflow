@@ -1,0 +1,716 @@
+<!-- Set PArameters Module -->
+<!-- Set the chnkPrefix to make all chunks unique in the overall folder -->
+```{r partB_create_integrated_Seurat_object_init, echo=TRUE, eval=TRUE, warning=FALSE}
+chnkPrefix <- "B3.integrated.seurat.object."
+VersionPdfExt <- VersionPdfExt <- paste0(".",chnkPrefix,"V", gsub("-", "", Sys.Date()), ".pdf")
+
+```
+
+
+### Create Sample List
+```{r B3_partB_create_sample_list, echo=TRUE, eval=TRUE, warning=FALSE, results=F}
+###############################################################################
+## Do percent mt plots                                                       ##
+
+SampleList <- createNormSampleList(
+    obj = Obio,
+    reduce = Obio@parameterList$debugReduce, # Default is NULL
+    vars.to.regress = Obio@parameterList$vars.to.regress,
+    #vars.to.regress = vars.to.regress,
+    s.genes = Obio@dataTableList[["referenceList"]]$s.genes,
+    g2m.genes = Obio@dataTableList[["referenceList"]]$g2m.genes,
+    annotateCellCyclePhase = TRUE
+)
+
+print(paste0("Cell Recuction: ", Obio@parameterList$debugReduce))
+lapply(SampleList, dim)
+## Done                                                                      ##
+###############################################################################
+
+###############################################################################
+## Add doublet annotation, if present, to meta data                          ##
+
+pos <- grep("DF_resultlist", names(Obio@dataTableList))
+
+if (length(pos) > 0){
+    sampleNames <- names(SampleList)
+    for (i in 1:length(SampleList)){
+        dfAdd <- Obio@dataTableList[["DF_resultlist"]][[sampleNames[i]]]
+        row.names(dfAdd) <- gsub("-1", "",row.names(dfAdd))
+        dfAdd <- dfAdd[row.names(dfAdd) %in% row.names(SampleList[[i]]@meta.data),]
+        
+        SampleList[[i]] <- addDf2seuratMetaData(
+            obj = SampleList[[i]],
+            dfAdd = dfAdd
+        )
+    }
+}
+
+## Done                                                                      ##
+###############################################################################
+
+###############################################################################
+## Add scalde data and pca for rpca integration                              ##
+
+if (length(SampleList) >= 10){
+    iMethod <- "rpca"
+} else {
+    iMethod <- "cca"
+}
+
+if (iMethod == "rpca"){
+    
+    features <- Seurat::SelectIntegrationFeatures(object.list = SampleList)  
+  
+    for (i in 1:length(SampleList)){
+         SampleList[[i]] <- Seurat::ScaleData(SampleList[[i]], features = features, verbose = FALSE)
+         SampleList[[i]] <- Seurat::RunPCA(SampleList[[i]], features = features, verbose = FALSE)
+    }
+}
+
+## Done                                                                      ##
+###############################################################################
+
+###############################################################################
+## Integrate Datasets                                                        ##
+
+## Determine k-filter parameter ##
+k.test <- min(as.vector(unlist(lapply(SampleList, ncol))))
+if (k.test < 200){
+    k.filter <- k.test-1
+} else {
+    k.filter <- 200
+}
+
+if (length(SampleList) > 1){
+    if (Obio@parameterList$scIntegrationMethod == "SCT"){
+        
+        if (length(grep("scNintegrationFeatures", names(Obio@parameterList))) == 0){
+            Obio@parameterList$scNintegrationFeatures = 3000
+        }
+        
+        library(future)
+        options(future.globals.maxSize = 14000 * 1024^2)
+        plan("multiprocess", workers = 30)
+        
+        sample.features <- Seurat::SelectIntegrationFeatures(
+            object.list = SampleList, 
+            nfeatures = Obio@parameterList$scNintegrationFeatures
+        )
+        SampleList <- Seurat::PrepSCTIntegration(
+            object.list = SampleList, 
+            anchor.features = sample.features, 
+            verbose = FALSE
+        )
+        
+        if (length(SampleList) >= 10){
+            
+          sampleAnchors <- Seurat::FindIntegrationAnchors(
+                object.list = SampleList, 
+                reduction = "rpca",
+                normalization.method = "SCT", 
+                anchor.features = sample.features, 
+                verbose = FALSE,
+                k.filter = k.filter
+            )
+            
+        } else {
+            # standard cca
+            sampleAnchors <- Seurat::FindIntegrationAnchors(
+                object.list = SampleList, 
+                normalization.method = "SCT", 
+                anchor.features = sample.features, 
+                verbose = FALSE,
+                k.filter = k.filter
+            )
+            
+        }
+        
+        
+        
+        OsC <- Seurat::IntegrateData(
+            anchorset = sampleAnchors, 
+            normalization.method = "SCT", 
+            verbose = FALSE,
+            k.weight = k.filter
+        )
+        detach("package:future", unload=TRUE)
+        
+    } else {
+    
+        if (length(SampleList) >= 10){
+            sampleAnchors <- Seurat::FindIntegrationAnchors(
+                object.list = SampleList, 
+                reduction = "rpca",
+                dims = 1:Obio@parameterList$singleCellSeuratNpcs4PCA,
+                k.filter = k.filter
+            ) 
+        } else {
+              #standard cca
+              sampleAnchors <- Seurat::FindIntegrationAnchors(
+                  object.list = SampleList, 
+                  dims = 1:Obio@parameterList$singleCellSeuratNpcs4PCA,
+                  k.filter = k.filter
+             ) 
+        }
+
+
+        OsC <- Seurat::IntegrateData(
+            #features.to.integrate = geneIntersectVec,
+            anchorset = sampleAnchors, 
+            dims = 1:Obio@parameterList$singleCellSeuratNpcs4PCA,
+            k.weight = k.filter
+        )
+    }
+    Obio@dataTableList$referenceList[["sampleAnchors"]] <- as.vector(sort(sampleAnchors@anchor.features))
+} else {
+    OsC <- SampleList[[1]]
+}
+Seurat::Idents(OsC) <- "sampleID"
+Seurat::Idents(OsC) <- factor(Seurat::Idents(OsC), levels = names(Obio@sampleDetailList))
+#OsC@meta.data$sampleID <- factor(OsC@meta.data$sampleID, levels = names(Obio@sampleDetailList))
+
+OsC@meta.data[["cellID"]] <- row.names(OsC@meta.data)
+
+DefaultAssay(OsC) <- "RNA"
+
+###############################################################################
+## Add meta data                                                             ##
+FN <- paste0(Obio@parameterList$workdir, "scRNAseq/design/sc.design.file.csv")
+if (file.exists(FN)){
+    if (file.exists(FN)){
+        dfObio <- read.csv(FN, header = F, stringsAsFactors = F)
+    }
+    dfObio[is.na(dfObio)] <- ""
+    
+    dfObio <- dfObio[dfObio[,1] != "", ]
+    
+    dfObio <- data.frame(t(dfObio), stringsAsFactors = F)
+    
+    names(dfObio) <- as.vector(t(dfObio[1,]))
+    dfObio <- dfObio[-1,]
+    pos <- unique(
+        c(
+            grep("meta_", names(dfObio)),
+            grep("META_", toupper(names(dfObio)))
+        )
+    )
+    
+    if (length(pos) > 0){
+        selVec <- c(
+            "sampleName",
+            names(dfObio)[pos]
+        )
+      
+        dfTemp <- dfObio[,selVec]
+        
+        dfMeta <- OsC@meta.data
+        dfMeta[["cellID"]] <- row.names(dfMeta)
+        dfMeta <- dfMeta[,c("cellID", "sampleID")]
+        
+        dfTemp <- merge(
+            dfTemp, 
+            dfMeta, 
+            by.x = "sampleName",
+            by.y = "sampleID"
+        )
+        
+        row.names(dfTemp) <- dfTemp$cellID
+        dfTemp$cellID <- NULL
+        
+        OsC <- addDf2seuratMetaData(
+            obj = OsC, 
+            dfAdd = dfTemp
+        )
+    }
+}
+## Done create cellRanger QC plots                                           ##
+###############################################################################
+
+
+###############################################################################
+## Save integrated object                                                    ##
+
+save(OsC,
+    file = paste0(
+         Obio@parameterList$localWorkDir,
+         Obio@parameterList$project_id,
+        ".Seurat.Robj"
+     )
+)
+
+print("OsC Object saved.")
+
+## Done                                                                      ##
+###############################################################################
+
+
+###############################################################################
+## Setting plotting parameters                                               ##
+dotsize  = 1
+
+
+if (nrow(OsC@meta.data) > 1000){
+  dotsize  = 0.75
+} else if (nrow(OsC@meta.data) > 10000){
+  dotsize = 0.5
+} else if (nrow(OsC@meta.data) > 20000){
+  dotsize = 0.1
+} else if (nrow(OsC@meta.data) > 50000){
+  dotsize = 0.05
+}
+
+Obio@parameterList$dotsize <- dotsize
+
+legendDotSize <- 5
+Obio@parameterList$legendDotSize <- legendDotSize
+dendrofactor <- 5
+Obio@parameterList$dendrofactor <- dendrofactor
+
+## Setting plotting parameters                                               ##
+###############################################################################
+
+###############################################################################
+## Assign cell cycle phase if it hasn't been done already                    ##
+
+
+if (length( Obio@dataTableList[["referenceList"]]$s.genes) > 3 & length( Obio@dataTableList[["referenceList"]]$g2m.genes) > 3){
+  
+    OsC <- Seurat::CellCycleScoring(
+          OsC, 
+          s.features = Obio@dataTableList[["referenceList"]]$s.genes, 
+          g2m.features = Obio@dataTableList[["referenceList"]]$g2m.genes, 
+          set.ident = TRUE
+    )  
+}
+
+names(OsC@meta.data) <- gsub("\\.", "_",names(OsC@meta.data))
+## Done assigning cell cycle phase                                           ##
+###############################################################################
+
+
+
+
+###############################################################################
+## Add meta data                                                             ##
+
+FN <- "design/sc.design.file.csv"
+
+if (file.exists(FN)){
+    if (file.exists(FN)){
+        dfObio <- read.csv(FN, header = F, stringsAsFactors = F)
+    }
+
+    dfObio[is.na(dfObio)] <- ""
+    
+    dfObio <- dfObio[dfObio[,1] != "", ]
+    
+    dfObio <- data.frame(t(dfObio), stringsAsFactors = F)
+    
+    names(dfObio) <- as.vector(t(dfObio[1,]))
+    dfObio <- dfObio[-1,]
+    pos <- unique(
+        c(
+            grep("meta_", names(dfObio)),
+            grep("META_", toupper(names(dfObio)))
+        )
+    )
+    
+    if (length(pos) > 0){
+        selVec <- c(
+            "sampleName",
+            names(dfObio)[pos]
+        )
+      
+        dfTemp <- dfObio[,selVec]
+        
+        dfMeta <- OsC@meta.data
+        dfMeta[["cellID"]] <- row.names(dfMeta)
+        dfMeta <- dfMeta[,c("cellID", "sampleID")]
+        
+        dfTemp <- merge(
+            dfTemp, 
+            dfMeta, 
+            by.x = "sampleName",
+            by.y = "sampleID"
+        )
+        
+        row.names(dfTemp) <- dfTemp$cellID
+        dfTemp$cellID <- NULL
+        
+        OsC <- addDf2seuratMetaData(
+            obj = OsC, 
+            dfAdd = dfTemp
+        )
+    }
+}
+
+
+## Done create cellRanger QC plots                                           ##
+###############################################################################
+
+
+```
+
+```{r partB_create_PCA_plots, echo=TRUE, eval=TRUE, warning=FALSE, results=F}
+###############################################################################
+## Perform integrated analysis                                               ##
+
+if (length(Obio@sampleDetailList) > 1){
+  Seurat::DefaultAssay(OsC) <- "integrated"
+} else {
+  Obio@parameterList$singleCellClusterString <- gsub("integrated", "RNA", Obio@parameterList$singleCellClusterString)
+  Seurat::DefaultAssay(OsC) <- "RNA"
+}
+
+
+# Run the standard workflow for visualization and clustering
+## This will scale on the most variable features only
+
+
+
+OsC <- Seurat::ScaleData(
+    OsC, 
+    verbose = FALSE,
+    vars.to.regress = Obio@parameterList$vars.to.regress
+)
+
+OsC <- Seurat::RunPCA(
+  OsC, 
+  npcs = Obio@parameterList$singleCellSeuratNpcs4PCA, verbose = FALSE
+)
+# t-SNE and Clustering
+
+## Add PCA clusters to data collection ##
+
+
+OsC <- Seurat::RunUMAP(OsC, reduction = "pca", dims = 1:Obio@parameterList$singleCellSeuratNpcs4PCA)
+
+OsC <- Seurat::RunTSNE(OsC, reduction = "pca", dims = 1:Obio@parameterList$singleCellSeuratNpcs4PCA)
+
+OsC <- Seurat::FindNeighbors(OsC, reduction = "pca", dims = 1:Obio@parameterList$singleCellSeuratNpcs4PCA)
+
+OsC <- Seurat::FindClusters(OsC, resolution = Obio@parameterList$singleCellClusterParameter)
+
+## Rational: Run PCA on variable features, then scale data for heatmaps and other applications
+
+if (length(Obio@sampleDetailList) > 1){
+  Seurat::DefaultAssay(OsC) <- Obio@parameterList$scIntegrationMethod
+  allGenes <- rownames(x = OsC@assays[[Obio@parameterList$scIntegrationMethod]])
+  OsC <- Seurat::ScaleData(OsC, verbose = FALSE, features=allGenes)
+} 
+
+Seurat::DefaultAssay(OsC) <- "RNA"
+allGenes <- rownames(x = OsC@assays$RNA)
+OsC <- Seurat::ScaleData(OsC, verbose = FALSE, features=allGenes)
+
+
+###############################################################################
+## Add custom cluster annotation if specified                                ##
+FNcol <- paste0(cwd, "/design/customClusterAnnotation.txt")
+tableValid <- FALSE
+
+if (file.exists(FNcol)){
+  dfClusterAnnotation <- read.delim(
+    FNcol, 
+    header = T, 
+    sep = "\t",
+    stringsAsFactors = F
+  )
+  
+  ## Check column names ##
+  pos1 <- grep("seurat_clusters", names(dfClusterAnnotation))
+  pos2 <- grep("clusterName", names(dfClusterAnnotation))
+  pos3 <- grep("clusterColor", names(dfClusterAnnotation))
+  
+  ## Check if clusters match ##
+  inClust <- unique(as.character(dfClusterAnnotation$seurat_clusters))
+  oClust <- unique(as.character(OsC@meta.data$seurat_clusters))
+  
+  
+  if (length(pos1) != 0 & length(pos2) != 0 & length(pos3) != 0 ){
+    ## Remove spaces ##
+    dfClusterAnnotation$clusterName <- gsub(" ", "_", dfClusterAnnotation$clusterName)
+    dfClusterAnnotation$clusterName <- gsub("\\.", "_", dfClusterAnnotation$clusterName)
+    dfClusterAnnotation$clusterName <- gsub("-", "_", dfClusterAnnotation$clusterName)
+    dfClusterAnnotation$clusterName <- gsub("__", "_", dfClusterAnnotation$clusterName)
+    dfClusterAnnotation$clusterName <- gsub("_$", "", dfClusterAnnotation$clusterName)
+    ## Check if clusters match ##
+    inClust <- unique(as.character(dfClusterAnnotation$seurat_clusters))
+    oClust <- unique(as.character(OsC@meta.data$seurat_clusters))
+    if (length(inClust) == length(intersect(inClust, oClust))){
+      tableValid <- TRUE
+    } else {
+      tableValid <- FALSE
+    }
+    
+  } else {
+    tableValid <- FALSE
+  }
+}
+
+if (!file.exists(FNcol) | !tableValid){
+  dfClusterAnnotation <- OsC@meta.data[,c("cellID", "seurat_clusters")]
+  
+  levels <- as.vector(sort(unique(dfClusterAnnotation$seurat_clusters)))
+  clusterOrder <- as.numeric(sort(unique(dfClusterAnnotation$seurat_clusters)))
+  
+  library(scales)
+  clusterCols <- hue_pal()(length(levels))
+  
+  dfClusterAnnotation <- data.frame(
+    seurat_clusters = levels,
+    clusterName = paste0("C", levels),
+    clusterColor = clusterCols,
+    clusterOrder = clusterOrder,
+    stringsAsFactors = F
+  )
+  
+  #row.names(dfClusterAnnotation) <- dfClusterAnnotation$cellID
+  #dfClusterAnnotation$cellID <- NULL
+  ## Add sample colors ##
+  
+  annoDir <- paste0(cwd, "/design")
+  
+  if (!dir.exists(annoDir)){
+    dir.create(annoDir)
+  }
+  
+  
+  
+  
+  FNcol <- paste0(annoDir, "/clusterAnnotation.txt")
+  write.table(
+    dfClusterAnnotation,
+    FNcol,
+    row.names=F,
+    sep = "\t"
+  ) 
+}
+
+## Make sure dfClusterAnnotation has a clusterOrder column
+pos <- grep("^clusterOrder$", names(dfClusterAnnotation))
+
+if (length(pos) ==1){
+  dfClusterAnnotation <- dfClusterAnnotation[order(dfClusterAnnotation$clusterOrder, decreasing = F),]
+  orderVec <- dfClusterAnnotation$clusterName
+  Obio@parameterList[["clusterNameOrder"]] <- orderVec
+} else {
+  ###############################################################################
+  ## Order average expression by cluster similarity (most variable genes)      ##
+  assay <- NULL
+  assay <- assay %||% DefaultAssay(object = OsC)
+  
+  
+  features <- VariableFeatures(object = OsC)
+  features <- intersect(x = features, y = rownames(x = OsC))
+  data.avg <- AverageExpression(object = OsC, assays = assay, 
+                                features = features, slot = "data", verbose = T)[[1]]
+  
+  
+  
+  if (ncol(data.avg) > 1){
+    data.dist <- dist(x = t(x = data.avg[features, ]))
+    dforder <- hclust(d = data.dist)
+    orderVec <- names(dfAvgExpr)[dforder$order]
+  } else {
+    orderVec <- names(data.avg)
+  }
+  
+  Obio@parameterList[["clusterNameOrder"]] <- orderVec
+  
+}
+
+###############################################################################
+## Merge into OsC@meta.data                                                  ##
+
+dfAdd <- OsC@meta.data[,c("seurat_clusters", "cellID")]
+dfAdd$seurat_clusters <- as.character(dfAdd$seurat_clusters)
+dfClusterAnnotation$seurat_clusters <- as.character(dfClusterAnnotation$seurat_clusters)
+
+dfClusterAnnotation$clusterOrder <- NULL
+
+dfAdd <- merge(
+  dfAdd,
+  dfClusterAnnotation,
+  by.x = "seurat_clusters",
+  by.y = "seurat_clusters"
+)
+
+dfAdd <- data.frame(dfAdd, stringsAsFactors = F)
+
+row.names(dfAdd) <- dfAdd$cellID
+dfAdd$cellID <- NULL
+dfAdd$seurat_clusters <- NULL
+
+OsC <- addDf2seuratMetaData(
+  obj = OsC, 
+  dfAdd = dfAdd
+)
+
+Seurat::Idents(OsC) <- "clusterName"
+Seurat::Idents(OsC) <- factor(Seurat::Idents(OsC), levels = Obio@parameterList[["clusterNameOrder"]])
+#OsC@meta.data$seurat_clusters <- factor(OsC@meta.data$seurat_clusters, levels = c(unique(as.numeric(dfClusterAnnotation$seurat_clusters))))
+
+## Done                                                                      ##
+###############################################################################
+
+###############################################################################
+## Add custom sample annotation if specified                                 ##
+FNsample <- paste0(cwd, "/design/customSampleAnnotation.txt")
+tableValid <- FALSE
+
+if (file.exists(FNsample)){
+  dfSampleAnnotation <- read.delim(
+    FNsample, 
+    header = T, 
+    sep = "\t",
+    stringsAsFactors = F
+  )
+  
+  ## Check column names ##
+  pos1 <- grep("sampleID", names(dfSampleAnnotation))
+  pos2 <- grep("sampleName", names(dfSampleAnnotation))
+  pos3 <- grep("sampleColor", names(dfSampleAnnotation))
+  
+  
+  if (length(pos1) != 0 & length(pos2) != 0 & length(pos3) != 0){
+    ## Edit sample annotation ##
+    dfSampleAnnotation$sampleName <- gsub(" ", "_", dfSampleAnnotation$sampleName)
+    dfSampleAnnotation$sampleName <- gsub("\\.", "_", dfSampleAnnotation$sampleName)
+    dfSampleAnnotation$sampleName <- gsub("-", "_", dfSampleAnnotation$sampleName)
+    dfSampleAnnotation$sampleName <- gsub("__", "_", dfSampleAnnotation$sampleName)
+    dfSampleAnnotation$sampleName <- gsub("_$", "", dfSampleAnnotation$sampleName)
+    ## Check if clusters match ##
+    inClust <- unique(as.vector(dfSampleAnnotation$sampleID))
+    oClust <- unique(as.vector(OsC@meta.data$sampleID))
+    if (length(inClust) == length(intersect(inClust, oClust))){
+      tableValid <- TRUE
+    } else {
+      tableValid <- FALSE
+    }  
+  } else {
+    tableValid <- FALSE
+  }
+}
+
+if (!file.exists(FNsample) | !tableValid){
+  dfSampleAnnotation <- OsC@meta.data[,c("cellID", "sampleID")]
+  
+  levels <- sort(unique(dfSampleAnnotation$sampleID))
+  
+  library(scales)
+  sampleCols <- hue_pal()(length(levels))
+  
+  dfSampleAnnotation <- data.frame(
+    sampleID = levels,
+    sampleName = levels,
+    sampleColor = sampleCols
+  )
+  
+  #row.names(dfSampleAnnotation) <- dfSampleAnnotation$cellID
+  #dfClusterAnnotation$cellID <- NULL
+  ## Add sample colors ##
+  annoDir <- paste0(cwd, "/design")
+  
+  if (!dir.exists(annoDir)){
+    dir.create(annoDir)
+  }
+  
+  FNsample <- paste0(annoDir, "/sampleAnnotation.txt")
+  
+  
+  write.table(
+    dfSampleAnnotation,
+    FNsample,
+    row.names=F,
+    sep = "\t"
+  ) 
+}
+
+
+###############################################################################
+## Merge into OsC@meta.data                                                  ##
+
+dfAdd <- OsC@meta.data[,c("cellID", "sampleID")]
+row.names(dfAdd) <- dfAdd$cellID
+
+dfAdd <- merge(
+  dfAdd,
+  dfSampleAnnotation,
+  by.x = "sampleID",
+  by.y = "sampleID"
+)
+
+row.names(dfAdd) <- dfAdd$cellID
+dfAdd$cellID <- NULL
+dfAdd$sampleID <- NULL
+
+OsC <- addDf2seuratMetaData(
+  obj = OsC, 
+  dfAdd = dfAdd
+)
+
+
+## Done                                                                      ##
+###############################################################################
+
+
+###############################################################################
+## Find all markers                                                          ##
+Seurat::DefaultAssay(OsC) <- "RNA"
+Seurat::Idents(OsC) <- "clusterName"
+
+lgFCthreshold <- 0.25
+
+dfGeneralMarkers <- Seurat::FindAllMarkers(
+  object = OsC, 
+  only.pos = FALSE, 
+  min.pct = 0.1, 
+  logfc.threshold = lgFCthreshold,
+  test.use = "roc",
+  assay =  "RNA",
+  slot = "data"
+)
+
+if (nrow(dfGeneralMarkers) == 0 | length(unique(dfGeneralMarkers$cluster)) < 2){
+  lgFCthreshold <- 0.00
+  dfGeneralMarkers <- Seurat::FindAllMarkers(
+    object = OsC, 
+    only.pos = FALSE, 
+    min.pct = 0.01, 
+    logfc.threshold = lgFCthreshold,
+    test.use = "roc",
+    assay =  "RNA",
+    slot = "data"
+  )
+}
+
+if (nrow(dfGeneralMarkers) > 0 & length(unique(dfGeneralMarkers$cluster)) >  2){
+  dfGeneralMarkers[["direction"]] <- ""
+  dfGeneralMarkers[dfGeneralMarkers$avg_diff >= 0, "direction"] <- "positive"
+  dfGeneralMarkers[dfGeneralMarkers$avg_diff < 0, "direction"] <- "negative"
+  
+  Obio@dataTableList[["dfGeneralMarkers"]] <- data.frame(NULL)
+  Obio@dataTableList[["dfGeneralMarkers"]] <- dfGeneralMarkers
+  
+  dfGeneralMarkersFilt <- dfGeneralMarkers[dfGeneralMarkers$avg_diff > lgFCthreshold | dfGeneralMarkers$avg_diff < -lgFCthreshold,]
+  
+  Obio@dataTableList[["dfGeneralMarkersFilt"]] <- data.frame(NULL)
+  Obio@dataTableList[["dfGeneralMarkersFilt"]] <- dfGeneralMarkersFilt
+  
+  dfGeneralMarkersPos <- dfGeneralMarkers[dfGeneralMarkers$direction == "positive", ]
+  dfTop1 <- data.frame(dfGeneralMarkersPos %>% group_by(cluster) %>% top_n(1, avg_diff))
+  dfTop5 <- data.frame(dfGeneralMarkersPos %>% group_by(cluster) %>% top_n(5, avg_diff))
+  dfTop10 <- data.frame(dfGeneralMarkersPos %>% group_by(cluster) %>% top_n(10, avg_diff))
+  dfTop50 <- data.frame(dfGeneralMarkersPos %>% group_by(cluster) %>% top_n(50, avg_diff))
+  
+  Obio@dataTableList[["dfGeneralMarkersTop10"]] <- dfTop10
+  
+  Obio@dataTableList$referenceList[["Top10clusterMarkers"]] <- as.vector(
+    unique(
+      dfTop10$gene
+    )
+  )
+}
+```

@@ -1,0 +1,143 @@
+<!-- Set Parameters Module -->
+<!-- Set the chnkPrefix to make all chunks unique in the overall folder -->
+```{r LRT_module, echo=FALSE, eval=TRUE, warning=FALSE}
+chnkPrefix <- "C12.LRT."
+VersionPdfExt <- VersionPdfExt <- paste0(".",chnkPrefix,"V", gsub("-", "", Sys.Date()), ".pdf")
+
+
+```
+
+
+
+```{r LRT_section, echo=TRUE, eval=TRUE, warning=FALSE, results=F}
+chnkVec <- as.vector(NULL, mode = "character")
+plotList <- list()
+lrtVec <- names(Obio@DEseq2LRTtable)[grep("LRT_",names(Obio@DEseq2LRTtable))]
+lrtVec <- names(Obio@DEseq2LRTtable)
+lrtVec <- lrtVec[grep("lg10p", lrtVec)]
+
+
+if (length(lrtVec) > 0){
+for (i in 1:length(lrtVec)){
+    lrtVec[i] <- unlist(strsplit(lrtVec[i], "lg10p"))[2]
+    tag <- lrtVec[i]
+    selVec <- c(
+      Obio@parameterList$geneIDcolumn,
+      paste0("contrast_L_lg2BaseMean", lrtVec[i]),
+      paste0("contrast_L_lg10p", lrtVec[i])
+    )
+      
+    dfTemp <- unique(dfMainData[,selVec])  
+    names(dfTemp)[2] <- "X"
+    names(dfTemp)[3] <- "Y"
+    
+    dfTemp <- dfTemp[!(dfTemp[,2] ==0),]
+    dfTemp <- dfTemp[!(dfTemp[,3] ==0),]
+    
+    dfTemp <- dfTemp[order(dfTemp$Y, decreasing=T),]
+    
+    dfTemp[["label"]] <- ""
+    dfTemp[1:10,"label"] <- dfTemp[1:10,geneIDcolumn]
+    
+    ###########################################################################
+    ## Make plot                                                             ##
+    dsize <- 1
+    alpha <- I(0.5)
+    shape <- 21
+    legendDotSize <- 5
+    
+    plotList[[tag]] <- ggplot(
+        data = dfTemp,
+        aes(x=X, y=Y, label = label)
+    #) + geom_vline(xintercept = 0, color = "grey", size=0.5
+    ) + geom_hline(yintercept = c(2), color = "red", size=0.5,linetype = 2
+    ) + geom_hline(yintercept = 0, color = "grey", size=0.5
+    ) + geom_point(
+        size=dsize,
+        shape = shape,
+        alpha = alpha,
+        fill = "grey"
+    ) + labs(
+        title = paste0("LRT padj vs. BaseMean ", lrtVec[i]), 
+        x = paste0("Base Mean/Intensity", lrtVec[i],")"),
+        y = paste0("-log10(LRT-pval ", lrtVec[i],")") 
+    ) + theme_bw(
+    ) +  theme(
+        axis.text.y   = element_text(size=8),
+        axis.text.x   = element_text(size=8),
+        axis.title.y  = element_text(size=12),
+        axis.title.x  = element_text(size=12),
+        axis.line = element_line(colour = "black"),
+        panel.border = element_rect(colour = "black", fill=NA, size=1),
+        plot.title = element_text(hjust = 0.5, size = 12)
+        #) + scale_fill_manual(values=c("#999999", "#E69F00")
+    ) + guides(col = guide_legend(override.aes = list(shape = 16, size = legendDotSize))
+    ) 
+         
+    
+    ## And now let's add the labels:
+    plotList[[tag]] <- plotList[[tag]] + ggrepel::geom_text_repel(size = 3)
+    ## Done making plot 
+    ###########################################################################
+  
+    ###########################################################################
+    ## Save plot to file                                                     ##
+    FNbase <- paste0(lrtVec[i], ".LRTplot", VersionPdfExt)
+    FN <- paste0(Obio@parameterList$reportFigDir, FNbase)
+    FNrel <- paste0("report_figures/", FNbase)
+    
+    pdf(FN)
+        print(plotList[[tag]])
+    dev.off()
+    ##                                                                       ##
+    ###########################################################################
+    
+   link <- paste0("https://biologic.crick.ac.uk/",Obio@parameterList$project_id,"/scatterplot?x_axis=",selVec[2],"&y_axis=",selVec[3],"&cat_id=ag_lab_categories__10")
+    
+    figCap <- paste0(
+        '**Figure ',
+        figureCount,
+        '** -log10 p-value of the likelihood ratio rest vs. Base Mean/Intensity plot. Donwolad a pdf of this figure <a href="',FNrel,'" target="_blank">here</a>',
+        'An interactive version of this figure can be found <a href="',link,'" target="_blank">here</a>. '
+    )
+ 
+    figureCount <- figureCount + 1
+    
+    NewChnk <- paste0(
+        paste0("### ",tag," \n"),
+            "\n```{r, results='asis', echo=F, eval=TRUE, warning=FALSE, fig.cap='",figCap,"'}\n",
+            "\n",
+            "\n print(plotList[['",tag,"']])",
+            "\n cat(  '\n')",
+            "\n\n\n```\n"   
+    )
+
+    chnkVec <- c(
+        chnkVec,
+        NewChnk
+    )
+}
+}
+
+if (length(lrtVec) > 0){
+    if (length(plotList) > 2){
+        tabVar <- ".tabset .tabset-fade .tabset-dropdown"
+    } else {
+        tabVar <- ".tabset .tabset-fade .tabset-pills"
+    }
+    
+    sectionDisplay <- paste0("# Likelyhood-ratio Test Results (LRT) {",tabVar, "}")
+    
+} else {
+    sectionDisplay <- ""
+}
+
+```
+
+
+`r sectionDisplay`
+
+```{r lrt_plot, echo=FALSE, eval=TRUE, warning=FALSE, results="asis"}
+cat(paste(knitr::knit(text = chnkVec, quiet = T), collapse = '\n'))
+```
+

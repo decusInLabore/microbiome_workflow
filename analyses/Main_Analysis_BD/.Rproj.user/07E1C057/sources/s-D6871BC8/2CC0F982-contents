@@ -1,0 +1,1379 @@
+---
+output: 
+    html_document:
+        code_folding: hide
+        df_print: tibble
+        highlight: default
+        theme: paper
+        toc: true
+        toc_depth: 5
+        toc_float: true
+        css: src/assets/style/style.css
+
+always_allow_html: yes
+---
+
+```{r setup, include=FALSE}
+###############################################################################
+## Recommended R-version                                                     ##
+
+# module purge;source /camp/stp/babs/working/software/modulepath_new_software_tree_2018-08-13;module load pandoc/2.2.3.2-foss-2016b;ml R/4.0.3-foss-2020a;R
+
+## Done                                                                      ##
+###############################################################################
+
+
+
+
+###############################################################################
+## Set the environment                                                       ##
+
+# if (!require("remotes")){
+#   install.packages("remotes")
+# }
+# 
+# remotes::install_github("rstudio/renv")
+
+if (!file.exists("renv.lock")){
+    renv::init()
+} else {
+    renv::restore(prompt=FALSE)
+}
+
+
+#renv::install("bioc::DESeq2")
+#renv::install("bioc::clusterProfiler")
+#renv
+
+## Done                                                                      ##
+###############################################################################
+
+
+###############################################################################
+## Set knitr options                                                         ##
+
+knitr::opts_chunk$set(
+    tidy = F,
+    tidy.opts = list(width.cutoff = 120),
+    message = FALSE,
+    warning = FALSE
+)
+
+##                                                                           ##
+###############################################################################
+
+###############################################################################
+## Set global variables                                                      ##
+
+workdir <- gsub("scripts/bulkRNAseq_workflow","workdir/",getwd())
+
+
+figureCount <- 1
+tableCount <- 1
+upload.results.to.database <- TRUE
+shinyBaseServerURL <- "shiny-bioinformatics.crick.ac.uk"
+
+## Done                                                                      ##
+###############################################################################
+
+
+###############################################################################
+## Load biologic object from part A                                          ##
+library(biologicSeqTools2)
+FN <- paste0("../../workdir/", list.files("../../workdir")[grep("bioLOGIC.Robj", list.files("../../workdir"))])
+load(FN)
+## Done                                                                      ##
+###############################################################################
+
+```
+
+
+```{r , echo=TRUE, eval=T, warning=FALSE}
+
+###############################################################################
+## Recommended R-version                                                     ##
+
+baseWebDir <- "/camp/stp/babs/www/boeings/bioLOGIC_external/data/"
+
+projectWebDir <- paste0(
+    baseWebDir,
+    Obio@parameterList$project_id,
+    "/html/"
+)
+
+if (!dir.exists(projectWebDir)){
+    dir.create(projectWebDir, recursive = T)
+}
+
+## create copy shell script ##
+
+if (file.exists("../../html_local/PartB_Analysis.html")){
+    system("mv ../../html_local/PartB_Analysis.html ../../html_local/Analysis_V1.html")
+}
+
+if (file.exists(paste0("../../outputs/", Obio@parameterList$project_id, ".result.table.xlsx"))){
+    if (!dir.exists("../../html_local/report_tables")){
+        dir.create("../../html_local/report_tables")
+    }  
+  
+    system(paste0("cp ", paste0("../../outputs/", Obio@parameterList$project_id, ".result.table.xlsx ../html_local/report_tables")))
+}
+
+
+system(paste0("cp -r ../../html_local/* ", projectWebDir))
+
+## Copy files to the web server                                              ##
+###############################################################################
+
+###############################################################################
+##                                                                           ##
+
+if (dir.exists("/Volumes/babs/working/boeings/")){
+    hpc.mount <- "/Volumes/babs/working/boeings/"
+} else if (dir.exists("Y:/working/boeings/")){
+    hpc.mount <- "Y:/working/boeings/"
+} else if (dir.exists("/camp/stp/babs/working/boeings/")){
+    hpc.mount <- "/camp/stp/babs/working/boeings/"
+} else {
+    hpc.mount <- ""
+}
+
+
+
+## Loading the BABS password ##
+if (upload.results.to.database){
+    FN <- paste0(hpc.mount, "Projects/reference_data/pwd_folder/babs.txt")
+    dbTable <- read.delim(
+      FN,
+      header = F,
+      sep = "\t",
+      stringsAsFactors = F
+    )
+}
+
+db.pwd <- as.vector(dbTable[1,1])
+##                                                                           ##
+###############################################################################
+
+
+###################################
+# Upload pca table to database    #
+###################################
+
+## Add sample.group_colors to include custom colors in the interactive display
+dfPCA <- Obio@dfPCA
+names(dfPCA) <- gsub("\\.", "_", names(dfPCA))
+pcaSampleGroups <- unique(sort(dfPCA$sample_group))
+
+pos <- c(
+  grep("sample.group_color", names(Obio@dfDesign)),
+  grep("sample_group_color", names(Obio@dfDesign))
+)
+
+
+if (length(pos) > 0){
+    dfColor <- unique(
+        Obio@dfDesign[,c("sample.group", "sample.group_color")]
+    )
+    
+    names(dfColor) <- gsub("\\.", "_", names(dfColor))
+    
+    if (nrow(dfColor) == length(pcaSampleGroups)){
+        dfPCA <- dplyr::full_join(
+            dfPCA, 
+            dfColor,
+            by = "sample_group"
+        )
+    }
+}
+
+names(dfPCA) <- gsub("sample.group_color", "sample_group_colors", names(dfPCA))
+
+biologicSeqTools2::upload.pca.table.to.db(
+    df.pca = dfPCA,
+    host =Obio@dbDetailList$host,
+    prim.data.db = Obio@dbDetailList$primDataDB,
+    password = db.pwd,
+    db.user = Obio@dbDetailList$db.user,
+    PCAdbTableName = Obio@parameterList$PCAdbTableName
+)
+
+# Finished creating pca database table
+
+###############################################################################
+# Upload design file to database                                              #
+###############################################################################
+# Obio@parameterList$designdbTableName <- paste0(
+#   Obio@parameterList$project_id, 
+#     "_designTable"
+# )
+dfDesign4upload <- Obio@dfDesign
+selVec <- c(
+    "sampleID",
+    "sample.id",
+    "sample.group",
+    "dataseries",
+    names(dfDesign4upload)[grep("^f_",names(dfDesign4upload))],
+    names(dfDesign4upload)[grep("^LRT_",names(dfDesign4upload))],
+    names(dfDesign4upload)[grep("^comp_",names(dfDesign4upload))],
+    names(dfDesign4upload)[grep("_color$",names(dfDesign4upload))]
+)
+
+pos <- grep("designTScol", names(Obio@parameterList))
+if (length(pos) > 0 & !is.null(Obio@parameterList$designTScol)){
+    selVec <- c(
+        selVec,
+        Obio@parameterList$designTScol
+    )
+}
+
+selVec <- unique(selVec[selVec %in% names(dfDesign4upload)])
+
+dfDesign4upload <- unique(dfDesign4upload[,selVec])
+names(dfDesign4upload) <- gsub("\\.", "_", names(dfDesign4upload))
+
+cmd.vec <- biologicSeqTools2::upload.datatable.to.database(
+  host = Obio@dbDetailList$host,
+  user = Obio@dbDetailList$db.user,
+  password = db.pwd,
+  prim.data.db = Obio@dbDetailList$primDataDB,
+  dbTableName = Obio@parameterList$designdbTableName,
+  df.data = dfDesign4upload,
+  db.col.parameter.list = biologicSeqTools2::inferDBcategories(
+      dfDesign4upload
+  ),
+    
+  new.table = TRUE
+)
+
+killDbConnections()
+
+
+###############################################################################
+# Upload to database                                                          #
+###############################################################################
+Obio@databaseTable$Gene_description <- NULL
+
+cmd.vec <- biologicSeqTools2::upload.datatable.to.database(
+    host = Obio@dbDetailList$host,
+    user = Obio@dbDetailList$db.user,
+    password = db.pwd,
+    prim.data.db = Obio@dbDetailList$primDataDB,
+    dbTableName = Obio@parameterList$rnaseqdbTableName,
+    # df.data = Obio@databaseTable[Obio@databaseTable$count_cut_off > 1, ], Use this option to filter reads
+    df.data = Obio@databaseTable,
+    # db.col.parameter.list = biologicSeqTools2::inferDBcategories(Obio@databaseTable[Obio@databaseTable$count_cut_off > 1, ]),
+    db.col.parameter.list = biologicSeqTools2::inferDBcategories(Obio@databaseTable),
+    new.table = TRUE
+)
+
+killDbConnections()
+
+
+#setwd(Obio@parameterList$workdir)
+doQuery <- function(
+    Obio, 
+    query,
+    resOut = FALSE
+){
+    #library(RMySQL)
+    res <- NULL
+    dbDB <- DBI::dbConnect(
+        drv = RMySQL::MySQL(), 
+        user = Obio@dbDetailList$db.user, 
+        password = db.pwd, 
+        host = Obio@dbDetailList$host,
+        dbname = Obio@dbDetailList$primDataDB
+    ) 
+    tryCatch(res <- DBI::dbGetQuery(dbDB, query), error = function(c) {
+        c$message <- stop(paste0("Error in ", query, "."))
+    })
+    dbDisconnect(dbDB)
+    if (resOut){
+        return(res)
+    }
+}
+
+
+## Create user in db
+username <- Obio@dbDetailList[["RaccessUsername"]] 
+pass <- Obio@dbDetailList[["RaccessPass"]] 
+
+query0 <- paste0("SELECT User, Host FROM mysql.user WHERE User = '",username,"' AND Host = '10.%';")
+res <- doQuery(Obio, query = query0, resOut=TRUE)
+if (nrow(res) == 0){
+    query1 <- paste0(
+        "CREATE USER '",
+        username, 
+        "'@'10.%' IDENTIFIED BY '",
+        pass,
+        "';"
+    )
+  
+    doQuery(Obio, query = query1)
+    #query0a <- paste0("DROP USER '",username,"'@'10.%';")   
+    #doQuery(Obio, query = query0a)
+} 
+
+designTB <- Obio@parameterList$designdbTableName
+query2 <- paste0("GRANT SELECT on ",Obio@dbDetailList$primDataDB,".",designTB ," TO ",username,"@'10.%';")
+doQuery(Obio, query = query2)
+
+mainTB <- Obio@parameterList$rnaseqdbTableName
+query3 <- paste0("GRANT SELECT on ",Obio@dbDetailList$primDataDB,".",mainTB ," TO ",username,"@'10.%';")
+doQuery(Obio, query = query3)
+
+pcaTB <- Obio@parameterList$PCAdbTableName
+query4 <- paste0("GRANT SELECT on ",Obio@dbDetailList$primDataDB,".",pcaTB ," TO ",username,"@'10.%';")
+doQuery(Obio, query = query4)
+
+
+
+###############################################################################
+# Create microwebsite                                                         #
+###############################################################################
+
+## Default sample order: Order in the design file
+
+# sample.order <- unique(paste0(
+#   "norm_counts_",
+#   Obio@dfDesign$sample.id,
+#   "_TPM"
+# ))
+
+
+#pos1 <- grep("_TPM", names)
+
+sample.order <- unique(paste0(
+  "norm_counts_",
+  Obio@dfDesign$sample.id
+  #"_TPM"
+))
+
+sample.order <- gsub("\\.", "_", sample.order)
+
+
+## Sort database.table ##
+orderVec <- names(Obio@databaseTable)
+lg2Order <- gsub("norm_counts_", "lg2_avg_", sample.order)
+
+orderVec <- orderVec[!(orderVec %in% sample.order)]
+orderVec <- orderVec[!(orderVec %in% lg2Order)]
+
+orderVec <- c(
+    orderVec,
+    sample.order,
+    lg2Order
+)
+
+Obio@databaseTable <- Obio@databaseTable[,orderVec]
+
+## Get relevant colors ##
+dfColor <- unique(Obio@dfDesign[,c("sample.id", "sample.group_color")])
+
+##
+dfColor$sample.id <- gsub("\\.", "_", dfColor$sample.id)
+
+row.names(dfColor) <- dfColor$sample.id
+
+sample.colors <- sample.order
+sample.colors <- gsub("_TPM", "", sample.colors)
+sample.colors <- gsub("norm_counts_", "", sample.colors)
+
+dfColor <- dfColor[sample.colors, ]
+
+sample.colors <- as.vector(dfColor$sample.group_color)
+
+
+if (!exists("gsea.cat.lines")){
+    gsea.cat.lines <- ""
+    downloadCatEnrichmentFNxlsx <- ""
+
+
+
+} else {
+    downloadCatEnrichmentFNxlsx <- paste0("outputs/", Obio@parameterList$project.code, ".enriched.categories.txt")
+
+    gseaList <- list(
+        "enriched_categories_table" = paste0(
+            "p",
+            substr(Obio@parameterList$project_id, 4,100),
+            "_enriched_categories_table"
+        ),
+        "NES_array" = "array('NES_Skin_Card14KI_vs_Skin_WT');",
+        "padj_array" = "array('padj_Skin_Card14KI_vs_Skin_WT');",
+        "image_link_array" = "array('contrast_1_image_link');"
+    )
+}
+
+if (!exists("timecourse.cat.lines")){
+    timecourse.cat.lines <- NA
+}
+
+#library(SBwebtools)
+setwd(Obio@parameterList$localWorkDir)
+
+#library(SBwebtools)
+webSiteDir <- Obio@parameterList$localWorkDir
+
+project.code <- Obio@parameterList$project_id
+
+setwd(Obio@parameterList$localWorkDir)
+
+###############################################################################
+## Deploy next generation website                                            ##
+
+
+
+###############################################################################
+## Do default Venn selection                                                 ##
+defaultVennSel <- names(Obio@databaseTable)
+defaultVennSel <- c(
+    defaultVennSel[grep("contrast_", defaultVennSel)],
+    defaultVennSel[grep("add_venn_", defaultVennSel)],
+    defaultVennSel[grep("_TsCor_", defaultVennSel)]
+
+)
+
+rmVec <- c(
+    grep("contrast_P_", defaultVennSel),
+    grep("_lg2BaseMean_", defaultVennSel),
+    grep("_padj_LRT_", defaultVennSel),
+    grep("_lg10p_", defaultVennSel),
+    grep("_stat_", defaultVennSel),
+    grep("pValueCor_", defaultVennSel)
+)
+
+if (length(rmVec) > 0){
+    defaultVennSel <- defaultVennSel[-rmVec]
+}
+
+## Add lrt
+defaultVennSel <- c(
+    defaultVennSel,
+    names(Obio@databaseTable)[grep("contrast_L_lg10p", names(Obio@databaseTable))]
+)
+
+## Done with LRT selection                                                   ##
+###############################################################################
+
+###############################################################################
+## Create default plot selection                                             ##
+defaults <- sort(names(Obio@databaseTable)[grep("contrast_", names(Obio@databaseTable))])
+
+xdefault <- defaults[grep("contrast_1_logFC", defaults)]
+if (length(xdefault) == 0){
+    xdefault <- defaults[1]
+}
+
+ydefault <- defaults[grep("contrast_1_lg10p", defaults)]
+if (length(ydefault) == 0){
+    ydefault <- defaults[2]
+}
+
+
+
+plotSelection <- c(
+    names(Obio@databaseTable)[grep("_logFC_",names(Obio@databaseTable))],
+    names(Obio@databaseTable)[grep("contrast_P_PCA_estimatePCA",names(Obio@databaseTable))],
+
+    names(Obio@databaseTable)[grep("_lg10p_",names(Obio@databaseTable))],
+
+    names(Obio@databaseTable)[grep("lg2BaseMean",names(Obio@databaseTable))],
+    names(Obio@databaseTable)[grep("corCoef",names(Obio@databaseTable))]
+)
+
+chunk1 <- plotSelection[grep("_logFC_", plotSelection)]
+chunkh2 <- plotSelection[grep("_lg10p_", plotSelection)]
+chunk2a <-chunkh2[grep("_lg10p_PCA", chunkh2)]
+chunk2b <- chunkh2[!(chunkh2  %in% chunk2a)]
+
+chnk2c <- plotSelection[grep("_corCoef", plotSelection)]
+
+chunk3 <- plotSelection[grep("_PCA_est", plotSelection)]
+
+chunk4 <- plotSelection[grep("_lg2BaseMean_", plotSelection)]
+# rmVec <- grep("_LRT_", chunk4)
+# if (length(rmVec) > 0){
+#     chunk4 <- chunk4[-rmVec]
+# }
+
+plotSelectionNew <- c(
+    chunk1,
+    chunk2b,
+    chnk2c,
+    chunk3,
+    chunk2a,
+    chunk4
+)
+
+plotAdd <- plotSelection[!(plotSelection %in% plotSelectionNew)]
+
+plotSelection <- c(
+    plotSelectionNew,
+    plotAdd
+)
+
+
+## Done creating default plot selection                                      ##
+###############################################################################
+
+pos <- grep("designTScol", names(Obio@parameterList))
+if (length(pos) == 1){
+    timepoint <- Obio@parameterList$designTScol
+} else {
+    timepoint <- NULL
+}
+
+
+## Removing legacy function 2022-05
+# biologicSeqTools2::createSettingsFile(
+#     publicDataset = FALSE,
+#     obj = Obio,
+#     df.data = Obio@databaseTable,
+#     defaultXcolName = xdefault,
+#     defaultYcolName = ydefault,
+#     timepointName = timepoint,
+#     primDataTable = Obio@parameterList$rnaseqdbTableName,
+#     pcaDbTable = Obio@parameterList$PCAdbTableName,
+#     sample.order = sample.order, #set to "" to go with default sorting
+#     heatmapSampleOrder = "",
+#     sample.names = "", # default is sample.order
+#     count.sample.colors = sample.colors,
+#     ptm.colum = "",
+#     count.table.headline = Obio@parameterList$count.table.headline,
+#     count.table.sidelabel = Obio@parameterList$count.table.sidelabel,
+#     venn.slider.selector.strings = defaultVennSel,
+#     plot.selection.strings = plotSelection,
+#     webSiteDir = paste0(hpc.mount, "Stefan/protocol_files/github/biologic/src/experiments/"),
+#     upper_heatmap_limit = 3,
+#     lower_heatmap_limit = -3,
+#     heamap.headline.text = Obio@parameterList$heamap.headline.text,
+#     project_id = Obio@parameterList$project_id
+# )
+
+setwd(Obio@parameterList$localWorkDir)
+## Done deploying next generation website                                    ##
+###############################################################################
+
+###############################################################################
+## Create settings JSON                                                      ##
+
+## If this is a timeseries experiment, identify all samples representing timepoints
+## that are not present in all timeseries
+
+if (!is.null(Obio@parameterList$designTScol)){
+    samplesToExclude <- biologicSeqTools2::samplesToExcludeFromTSdisplay(
+        Obio = Obio,
+        designTScol = Obio@parameterList$designTScol
+    )
+}
+
+
+projectJSON <- biologicSeqTools2::createSettingsJSON(
+    obj = Obio,
+    publicDataset = FALSE,
+    df.data = Obio@databaseTable,
+    defaultXcolName = xdefault,
+    defaultYcolName = ydefault,
+    timepointName = timepoint,
+    primDataTable = Obio@parameterList$rnaseqdbTableName,
+    pcaDbTable = Obio@parameterList$PCAdbTableName,
+    sample.order = sample.order, #set to "" to go with default sorting
+    heatmapSampleOrder = "",
+    sample.names = "", # default is sample.order
+    count.sample.colors = sample.colors,
+    ptm.colum = "",
+    count.table.headline = Obio@parameterList$count.table.headline,
+    count.table.sidelabel = Obio@parameterList$count.table.sidelabel,
+    venn.slider.selector.strings = defaultVennSel,
+    plot.selection.strings = plotSelection,
+    webSiteDir = paste0(hpc.mount, "Stefan/protocol_files/github/biologic/src/experiments/"),
+    upper_heatmap_limit = 3,
+    lower_heatmap_limit = -3,
+    heamap.headline.text = Obio@parameterList$heamap.headline.text,
+    project_id = Obio@parameterList$project_id,
+    samplesToExcludeFromTSdisplay = samplesToExclude
+)
+
+## Done                                                                      ##
+###############################################################################
+
+## Specific to this project ##
+# jsonList <- jsonlite::fromJSON(projectJSON)
+# 
+# #jsonList$timecourse_chart$datasets$HET$sample_group
+# 
+# jsonList$timecourse_chart$datasets$HOM$sample_group$HOM_MaleED07 <- NULL
+# jsonList$timecourse_chart$datasets$HOM$sample_group$HOM_MaleED10 <- NULL
+# jsonList$timecourse_chart$datasets$HOM$sample_group$HOM_MaleED14 <- NULL
+# 
+# jsonList$timecourse_chart$datasets$WT$sample_group$WT_MaleED07 <- NULL
+# jsonList$timecourse_chart$datasets$WT$sample_group$WT_MaleED10 <- NULL
+# jsonList$timecourse_chart$datasets$WT$sample_group$WT_MaleED14 <- NULL
+# 
+# projectJSON <- jsonlite::toJSON(jsonList)
+# 
+projectJSONstring <- gsub("[\n]", "", toString(projectJSON))
+projectJSONstring <- gsub(" ", "", projectJSONstring)
+
+
+
+###############################################################################
+## Upload JSON
+
+dfUpload <- data.frame(
+    experiment_code = Obio@projectDetailList$project_id,
+    experiment_settings = projectJSONstring
+)
+
+###############################################################################
+## Check if an entry for this project exist already. If it does > update     ##
+
+dbDB <- DBI::dbConnect(
+    drv = RMySQL::MySQL(), 
+    user = Obio@dbDetailList$db.user, 
+    password = db.pwd, 
+    host = Obio@dbDetailList$host, 
+    dbname = "operational"
+)
+
+query <- paste0("SELECT id, experiment_code, created_at FROM settings WHERE experiment_code = '",Obio@parameterList$project_id,"';")
+
+dfTest <- DBI::dbGetQuery(dbDB, query)
+DBI::dbDisconnect(dbDB)
+
+timeStamp <- format(as.POSIXlt(Sys.time()),'%Y-%m-%d %H:%M:%S')
+
+if (nrow(dfTest) ==1){
+    dfUpload[["id"]] = as.vector(dfTest[1,"id"])
+    dfUpload[["created_at"]] = as.vector(dfTest[1,"created_at"])
+    ## Delete original row ##
+    dbDB <- DBI::dbConnect(
+        drv = RMySQL::MySQL(), 
+        user = Obio@dbDetailList$db.user, 
+        password = db.pwd, 
+        host = Obio@dbDetailList$host, 
+        dbname = "operational"
+    )
+    query <- paste0("DELETE FROM settings WHERE experiment_code = '",Obio@parameterList$project_id,"';")
+    res <- DBI::dbGetQuery(dbDB, query)
+    DBI::dbDisconnect(dbDB)
+    
+    
+} else {
+    dfUpload[["created_at"]] = timeStamp
+}
+
+dfUpload[["updated_at"]] <- timeStamp
+##                                                                           ##
+###############################################################################
+
+biologicSeqTools2::upload.datatable.to.database(
+    host = Obio@dbDetailList$host,
+    user = Obio@dbDetailList$db.user,
+    password = db.pwd,
+    prim.data.db = "operational",
+    dbTableName = "settings",
+    df.data = dfUpload,
+    db.col.parameter.list = list(
+        "INT(10) NULL DEFAULT NULL" = c("id"),
+        "LONGTEXT NULL DEFAULT NULL" = c("^experiment_settings$"),
+        "VARCHAR(255) CHARACTER SET latin1 COLLATE latin1_swedish_ci" = c("^experiment_code$"),
+        "TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP" = c("created_at", "updated_at")
+    ),
+    increment = 5000,
+    new.table = FALSE,
+    first.row.name.index = 1,
+    startOnlyWithConnectionCount1 = FALSE,
+    cols2Index = NULL,
+    indexName = NULL,
+    mode = "MySQL",
+    addRowNamesColumn = FALSE
+)
+
+## Done with uploading settings JSON                                         ##
+###############################################################################
+
+###############################################################################
+## Add project                                                               ##
+
+## project ##
+timeStamp <- format(as.POSIXlt(Sys.time()),'%Y-%m-%d %H:%M:%S')
+
+if (is.null(Obio@parameterList$projectName)){
+    projectName <- paste0(Obio@parameterList$labname, " lab projects")
+    Obio@parameterList$projectName <- projectName
+}
+
+## Check if project exists or needs to be generated ##
+###############################################################################
+## Check if an entry for this project exist already. If it does > update     ##
+
+dbDB <- DBI::dbConnect(
+    drv = RMySQL::MySQL(), 
+    user = Obio@dbDetailList$db.user, 
+    password = db.pwd, 
+    host = Obio@dbDetailList$host, 
+    dbname = "operational"
+)
+
+query <- paste0("SELECT * FROM projects WHERE name = '",Obio@projectDetailList$projectName,"';")
+
+dfTest <- DBI::dbGetQuery(dbDB, query)
+DBI::dbDisconnect(dbDB)
+
+if (nrow(dfTest) == 0){
+    ## Create new project ##
+    myFun <- function(n = 5000) {
+        a <- do.call(paste0, replicate(3, sample(LETTERS, n, TRUE), FALSE))
+        paste0(a, sprintf("%04d", sample(9999, n, TRUE)), sample(LETTERS, n, TRUE))
+    }
+    
+    if (is.null(Obio@parameterList$project_code)){
+        project_code <- paste0("CRK",Obio@parameterList$labname, myFun(1))
+        Obio@parameterList$project_code <- project_code
+    }
+    
+    if (is.null(Obio@parameterList$project_description)){
+        Obio@parameterList$project_description <- "Project Description TBD"
+    }
+    
+    dfProject <-  data.frame(
+        name = Obio@parameterList$projectName,
+        project_code = Obio@parameterList$project_code,
+        description = Obio@parameterList$project_description,
+        lab = Obio@parameterList$labname
+    )
+    
+    dfProject[["created_at"]] = timeStamp
+    
+    dfProject[["updated_at"]] <- timeStamp
+    
+    upload.datatable.to.database(
+        host = Obio@dbDetailList$host,
+        user = Obio@dbDetailList$db.user,
+        password = db.pwd,
+        prim.data.db = "operational",
+        dbTableName = "projects",
+        df.data = dfProject,
+        db.col.parameter.list = list(
+            "INT(10) NULL DEFAULT NULL" = c("id"),
+            "LONGTEXT NULL DEFAULT NULL" = c("^description$"),
+            "VARCHAR(255) CHARACTER SET latin1 COLLATE latin1_swedish_ci" = c("^name$", "^project_code$", "^lab$"),
+            "TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP" = c("created_at", "updated_at")
+        ),
+        increment = 5000,
+        new.table = FALSE,
+        first.row.name.index = 1,
+        startOnlyWithConnectionCount1 = FALSE,
+        cols2Index = NULL,
+        indexName = NULL,
+        mode = "MySQL",
+        addRowNamesColumn = FALSE
+    )
+    
+    ## Get new project id ##
+    dbDB <- DBI::dbConnect(
+        drv = RMySQL::MySQL(), 
+        user = Obio@dbDetailList$db.user, 
+        password = db.pwd, 
+        host = Obio@dbDetailList$host, 
+        dbname = "operational"
+    )
+    
+    query <- paste0("SELECT * FROM projects WHERE name = '",Obio@projectDetailList$projectName,"';")
+    
+    dfTest <- DBI::dbGetQuery(dbDB, query)
+    DBI::dbDisconnect(dbDB)
+    
+    Obio@parameterList$project_code <- dfTest$id[1]
+    
+} else {
+  Obio@parameterList$project_code <- dfTest$id[1]
+}
+
+
+##                                                                           ##
+###############################################################################
+
+###############################################################################
+
+
+## Done with uploading settings JSON                                         ##
+###############################################################################
+
+###############################################################################
+## Add experiment                                                            ##
+
+## Check if experiment exists already ##
+timeStamp <- format(as.POSIXlt(Sys.time()),'%Y-%m-%d %H:%M:%S')
+
+if (is.null(Obio@parameterList$project_id)){
+    projectName <- paste0(Obio@parameterList$labname, " lab projects")
+    Obio@parameterList$projectName <- projectName
+}
+
+## Check if project exists or needs to be generated ##
+###############################################################################
+## Check if an entry for this project exist already. If it does > update     ##
+
+###############################################################################
+## Upload JSON
+
+if (!is.null(Obio@parameterList$abstract) && (nchar(Obio@parameterList$abstract) > 200)){
+    Obio@parameterList$short_description <- gsub(
+        " ", 
+        "", 
+        paste0(substr(Obio@parameterList$abstract, 1, 200), "...")
+    )
+} else {
+    Obio@parameterList$short_description <- "Short descripton to be added."
+}
+
+if (is.null(Obio@parameterList$main_question)){
+    Obio@parameterList$experiment_question <- "What are the differences in gene expression between conditions?"
+}
+
+if (is.null(Obio@parameterList$lead_scientist)){
+    Obio@parameterList$lead_scientist <- "Lead Scientist TBD"
+}
+
+dfUpload <- data.frame(
+        name = Obio@parameterList$projectName,
+        project_id = Obio@parameterList$project_code,
+        experiment_code = Obio@parameterList$project_id,
+        main_question =  Obio@parameterList$experiment_question, #Obio@parameterList$main_question,
+        description = Obio@parameterList$short_description,#Obio@parameterList$description,
+        lab = paste0(Obio@parameterList$labname, " Lab"),
+        lead_scientist = Obio@parameterList$lead_scientist
+    ) 
+###############################################################################
+## Check if an entry for this project exist already. If it does > update     ##
+
+dbDB <- DBI::dbConnect(
+    drv = RMySQL::MySQL(), 
+    user = Obio@dbDetailList$db.user, 
+    password = db.pwd, 
+    host = Obio@dbDetailList$host, 
+    dbname = "operational"
+)
+
+query <- paste0("SELECT* FROM experiments WHERE experiment_code = '",Obio@parameterList$project_id,"';")
+
+dfTest <- DBI::dbGetQuery(dbDB, query)
+DBI::dbDisconnect(dbDB)
+
+timeStamp <- format(as.POSIXlt(Sys.time()),'%Y-%m-%d %H:%M:%S')
+
+if (nrow(dfTest) ==1){
+    dfUpload[["id"]] = as.vector(dfTest[1,"id"])
+    dfUpload[["created_at"]] = as.vector(dfTest[1,"created_at"])
+    ## Delete original row ##
+    dbDB <- DBI::dbConnect(
+        drv = RMySQL::MySQL(), 
+        user = Obio@dbDetailList$db.user, 
+        password = db.pwd, 
+        host = Obio@dbDetailList$host, 
+        dbname = "operational"
+    )
+    query <- paste0("DELETE FROM experiments WHERE experiment_code = '",Obio@parameterList$project_id,"';")
+    res <- DBI::dbGetQuery(dbDB, query)
+    DBI::dbDisconnect(dbDB)
+    
+    
+} else {
+    dfUpload[["created_at"]] = timeStamp
+}
+
+dfUpload[["updated_at"]] <- timeStamp
+#dfUpload <- dfUpload[,names(dfTest)]
+##                                                                           ##
+###############################################################################
+
+biologicSeqTools2::upload.datatable.to.database(
+    host = Obio@dbDetailList$host,
+    user = Obio@dbDetailList$db.user,
+    password = db.pwd,
+    prim.data.db = "operational",
+    dbTableName = "experiments",
+    df.data = dfUpload,
+    db.col.parameter.list = list(
+            "INT(10) NULL DEFAULT NULL" = c("id"),
+            "LONGTEXT NULL DEFAULT NULL" = c("^main_questio$", "^description$","^main_question$","^experiment_settings$"),
+            "VARCHAR(255) CHARACTER SET latin1 COLLATE latin1_swedish_ci" = c("^name$", "^project_code$", "^experiment_code$", "^project_id$", "^lab$", "^lead_scientist$"),
+            "TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP" = c("created_at", "updated_at")
+        ),
+    increment = 5000,
+    new.table = FALSE,
+    first.row.name.index = 1,
+    startOnlyWithConnectionCount1 = FALSE,
+    cols2Index = NULL,
+    indexName = NULL,
+    mode = "MySQL",
+    addRowNamesColumn = FALSE
+)
+
+## Done with uploading settings JSON                                         ##
+###############################################################################
+
+
+
+
+
+
+###############################################################################
+## Upload gene categories creaed in this project                             ##
+HmDisplayCatsFromDb <- Obio@projectDetailList[["projectGeneCategories"]] 
+lab.categories.table <- Obio@parameterList$lab.categories.table
+geneIDcolumn <- Obio@parameterList$geneIDcolumn
+dfMainData <- Obio@databaseTable
+
+if (geneIDcolumn != "hgnc_symbol" | geneIDcolumn != "mgi_symbol"){
+    geneSelCol <- "hgnc_symbol"
+} else {
+    geneSelCol <- geneIDColumn
+}
+
+
+createProjectRefDbTables <- T
+
+if (createProjectRefDbTables){
+    ## Assign category IDs ##
+    ## First check if categories exist already
+    ## if they do - delete those and re-assign cat id
+    ## if they don't find next available cat id
+    for (i in 1:length(HmDisplayCatsFromDb)){
+        dbDB <- DBI::dbConnect(
+            drv = RMySQL::MySQL(), 
+            user = Obio@dbDetailList$db.user, 
+            password = db.pwd, 
+            host = Obio@dbDetailList$host, 
+            dbname = Obio@dbDetailList$ref.cat.db
+        )
+        
+        query <- paste0("SELECT * FROM ",lab.categories.table," WHERE cat_name = '", names(HmDisplayCatsFromDb)[i], "' and cat_type = '", HmDisplayCatsFromDb[[i]]$cat_type, "';")
+        dfOut <-  dbGetQuery(dbDB, query)
+        dbDisconnect(dbDB)
+        
+        if (nrow(dfOut) == 1){
+            HmDisplayCatsFromDb[[i]][["cat_id"]] <- dfOut$cat_id
+        } else {
+          HmDisplayCatsFromDb[[i]][["cat_id"]] <- NULL
+        }
+        
+    }
+    
+    
+    
+    ## Delete all existing tables for this project ##
+    dbDB <- DBI::dbConnect(
+            drv = RMySQL::MySQL(), 
+            user = Obio@dbDetailList$db.user, 
+            password = db.pwd, 
+            host = Obio@dbDetailList$host, 
+            dbname = Obio@dbDetailList$ref.cat.db
+    )
+    
+    ## Insert categories ##
+    
+    UploadList <- HmDisplayCatsFromDb
+    
+    ## Translate geneIDs to human for non-standard species ##
+    rmVec <- as.vector(NULL, mode="numeric")
+    
+    if (geneIDcolumn != geneSelCol){
+        for (d in 1:length(UploadList)){
+            convertedGeneVec <- dfMainData[dfMainData[,geneIDcolumn] %in% UploadList[[d]]$geneVec ,geneSelCol]
+            convertedGeneVec <- unique(convertedGeneVec)
+            convertedGeneVec <- convertedGeneVec[convertedGeneVec != ""]
+            convertedGeneVec <- convertedGeneVec[convertedGeneVec != 0]
+            
+            if (length(convertedGeneVec > 0)){
+                UploadList[[d]]$geneVec <- convertedGeneVec
+            } else {
+                rmVec <- c(
+                  rmVec, 
+                  d
+                )
+            }
+            
+        }
+    }
+    
+    if (length(rmVec) > 0){
+        UploadList <- UploadList[-rmVec]
+    }
+    
+        
+    ## Upload to database ##
+    createProjectRefDbTables <- T
+    
+    if (length(UploadList) > 0 && createProjectRefDbTables){  
+        for (i in 1:length(UploadList)){
+            ###########################################################################
+        ## check if cat name exist and delete if it does                         ##
+        #library(RMySQL)
+        dbDB <- DBI::dbConnect(
+            drv = RMySQL::MySQL(), 
+            user = Obio@dbDetailList$db.user, 
+            password = db.pwd, 
+            host = Obio@dbDetailList$host, 
+            dbname = Obio@dbDetailList$ref.cat.db
+        )
+        
+        query <- paste0("SELECT cat_id, cat_name FROM ",lab.categories.table, " WHERE cat_name = '",names(UploadList)[i],"'")
+        
+        dfTest <- dbGetQuery(dbDB, query)
+        dbDisconnect(dbDB)
+        ## Done                                                                  ##
+        ###########################################################################
+        if (nrow(dfTest) ==1){
+            catID = as.vector(dfTest[1,"cat_id"])
+        } else {
+        
+            catID <- biologicSeqTools2::add.category.to.lab.reference.table.hs(
+            host = Obio@dbDetailList$host,
+            pwd = db.pwd,
+            user = Obio@dbDetailList$db.user,
+            cat.ref.db = "reference_categories_db_new",
+            cat.ref.db.table = lab.categories.table,
+            gene.vector = UploadList[[i]]$geneVec,
+            gene.id = geneSelCol, #options hgnc_symbol, mgi_symbol
+            mm.hs.conversion.file =  paste0(hpc.mount, "Projects/reference_data/20160303.homologene.data.txt"),
+            cat_name = names(UploadList)[i],
+            cat_type = UploadList[[i]]$cat_type,
+            data_source = UploadList[[i]]$data_source,
+            comments_1 = "",
+            comments_2 = "",
+            new.lab.category.table = F,
+            cat.description.db  = "internal_categories",
+            cat.description.db.table = "category_description",
+            cat.description.text = UploadList[[i]]$cat.description.text,
+            lab.name = labname
+        )
+        }
+        
+        UploadList[[i]][["cat_id"]] <- catID
+        
+        ## Add cat id to main list
+        HmDisplayCatsFromDb[[names(UploadList)[i]]][["cat_id"]] <- catID
+      
+        }
+    }
+}
+
+
+## Done                                                                      ##
+###############################################################################
+
+###############################################################################
+## Select tables for reference listing                                       ##
+
+## Switch to mgi symbols ##
+
+
+## List all available reference tables ##
+availableTables <- biologicSeqTools2::list.db.tables.in.db(
+    dbname = "reference_categories_db_new",
+    password = db.pwd,
+    host=Obio@dbDetailList$host,
+    user=Obio@dbDetailList$db.user
+)
+
+labCatName <-  paste0(Obio@projectDetailList$labname, " Lab")
+
+if (length(Obio@referenceTableList) == 0){
+    Obio@referenceTableList <- list(
+        "Hallmark Signatures" = "mysigdb_h_hallmarks",
+        "Pathways" = "mysigdb_c2_1329_canonical_pathways",
+        "GO-BP" = "mysigdb_c5_BP",
+        "GO-MF" = "mysigdb_c5_MF",
+        "TF Motifs" = "TRANSFAC_and_JASPAR_PWMs",
+        "Protein Complexes" = "networkcategories",
+        "GO-BP" = "GO_Biological_Process_2017",
+        "mysigdb_c7_immunologic_signatures" = "Immunological Signatures"
+    )
+}
+
+
+
+Obio@referenceTableList[[labCatName]] <- Obio@parameterList$lab.categories.table
+
+## Define relevant genes for selection ##
+
+
+if (Obio@parameterList$geneIDcolumn != "hgnc_symbol" && Obio@parameterList$geneIDcolumn != "mgi_symbol"){
+    gsCol <- "hgnc_symbol"
+} else {
+    gsCol <- Obio@parameterList$geneIDcolumn 
+}
+
+relevant.genes <- as.vector(
+    unique(
+        Obio@databaseTable[Obio@databaseTable$cluster_order, gsCol]
+    )
+)
+
+
+
+length(relevant.genes)
+
+for (i in 1:length(Obio@referenceTableList)) {
+    df.ref <- import.db.table.from.db(
+        host = Obio@dbDetailList$host,
+        dbname = Obio@dbDetailList$ref.cat.db,
+        dbtable = Obio@referenceTableList[[i]],
+        user = Obio@dbDetailList$db.user,
+        password = db.pwd
+    )
+
+    ## Remove temp categories ##
+    # temPos <- grep("temp_", df.ref$cat_type)
+    #
+    # if (length(temPos) > 0) {
+    #     df.ref <- df.ref[-temPos,]
+    # }
+
+    df.temp <- add2labCatSelectionDBtable(
+        df.ref = df.ref,
+        cat_group_name = names(Obio@referenceTableList)[i],
+        reference.gene.vector = relevant.genes,
+        ref.gene.vec.id = gsCol,
+        cat_views = NA
+    )
+
+    if (i == 1) {
+        df.db.table <- df.temp
+    } else {
+        df.db.table <- rbind(df.temp, df.db.table)
+    }
+}
+
+###############################################################################
+## Filter cat dataset                                                        ##
+###############################################################################
+## Remove all datasets with less than 5 proteins matched
+catIdGroupsExemptFromFiltering <- c(
+    Obio@parameterList$lab.categories.table,
+    "mysigdb_h_hallmarks",
+    "mysigdb_c2_1329_canonical_pathways",
+    "mysigdb_c5_BP"
+)
+
+dfUnfiltered <- df.db.table[as.vector(unlist(sapply(catIdGroupsExemptFromFiltering, function(x) grep(x, df.db.table$cat_id)))),]
+
+dim(df.db.table)
+df.db.table <- df.db.table[df.db.table$cat_count >= 5,]
+dim(df.db.table)
+
+## Add unfiltered categories ##
+if (exists("dfUnfiltered") & (nrow(dfUnfiltered) > 0)){
+    df.db.table <- unique(
+        rbind(
+            dfUnfiltered,
+            df.db.table
+        )
+    )
+}
+
+dim(df.db.table)
+
+#df.db.table <- df.db.table[df.db.table$cat_weight > 0.3,]
+#dim(df.db.table)
+
+
+###############################################################################
+## Add full temp categories associated with this project                     ##
+## Lab categories ##
+df.ref <- import.db.table.from.db(
+    dbname = Obio@dbDetailList$ref.cat.db,
+    dbtable = Obio@parameterList$lab.categories.table,
+    password = db.pwd,
+    host = Obio@dbDetailList$host,
+    user = Obio@dbDetailList$db.user
+)
+
+## Remove all project temp categories from df.ref
+df.ref <- df.ref[grep(paste0("temp_", Obio@parameterList$project_id), df.ref$cat_type),]
+
+if (exists("df.ref") & nrow(df.ref) > 0){
+    df.temp <- add2labCatSelectionDBtable(
+        df.ref = df.ref,
+        cat_group_name = "This project",
+        reference.gene.vector = reference.gene.vector,
+        ref.gene.vec.id = gsCol,
+        cat_views = NA
+    )
+
+    df.db.table <- rbind(df.temp, df.db.table)
+}
+## Done adding temp categories associated with this project
+###############################################################################
+
+
+###############################################################################
+## Upload to database                                                        ##
+###############################################################################
+biologicSeqTools2::upload.datatable.to.database(
+    host = Obio@dbDetailList$host,
+    user = Obio@dbDetailList$db.user,
+    password = db.pwd,
+    prim.data.db = Obio@dbDetailList$primDataDB,
+    dbTableName = Obio@parameterList$cat.ref.db.table,
+    df.data = df.db.table,
+    db.col.parameter.list = list(
+        "VARCHAR(255) CHARACTER SET utf8 COLLATE utf8_general_ci" = c("comments_1","cat_name"),
+        "VARCHAR(50) CHARACTER SET utf8 COLLATE utf8_general_ci" = c("cat_id", "cat_group"),
+        "VARCHAR(1) CHARACTER SET utf8 COLLATE utf8_general_ci" = c("ppos", "amino_acid", "charge","known_site"),
+        "BIGINT(8) NULL DEFAULT NULL" = c("row_names"),
+        "INT(8) NULL DEFAULT NULL" = c("cat_item_size", "cat_count", "cat_views"),
+        "DECIMAL(6,3) NULL DEFAULT NULL" = c("cat_weight"),
+        "DECIMAL(6,5) NULL DEFAULT NULL" = c("padj", "pvalue","^pep$")
+    ),
+    new.table = TRUE
+)
+
+##  End creating reference category selection for this project               ##
+###############################################################################
+
+###############################################################################
+## Upload default report                                                     ##
+
+## Step 1 get experiment id ##
+dbDB <- DBI::dbConnect(
+    drv = RMySQL::MySQL(), 
+    user = Obio@dbDetailList$db.user, 
+    password = db.pwd, 
+    host = Obio@dbDetailList$host, 
+    dbname = "operational"
+)
+
+query <- paste0("SELECT * FROM experiments WHERE experiment_code = '",Obio@parameterList$project_id,"';")
+
+dfTest <- DBI::dbGetQuery(dbDB, query)
+DBI::dbDisconnect(dbDB)
+
+if (nrow(dfTest) > 0){
+    experiment_id <- dfTest$id
+} else {
+    experiment_id <- NULL
+}
+
+
+## Step 2: Check if a report exists already
+dbDB <- DBI::dbConnect(
+    drv = RMySQL::MySQL(), 
+    user = Obio@dbDetailList$db.user, 
+    password = db.pwd, 
+    host = Obio@dbDetailList$host, 
+    dbname = "operational"
+)
+
+query <- paste0("SELECT * FROM reports WHERE experiment_id = '",experiment_id,"';")
+
+dfTest <- DBI::dbGetQuery(dbDB, query)
+DBI::dbDisconnect(dbDB)
+
+createReport <- FALSE
+
+if (nrow(dfTest) > 0 && nchar(enc2native(dfTest$content)) < 200 ){
+    createReport <- FALSE
+    
+} else {
+    id <- 0
+    if (nrow(dfTest) > 0){
+        ## Delete stub report ##
+        id <- dfTest$id
+        
+        dbDB <- DBI::dbConnect(
+            drv = RMySQL::MySQL(), 
+            user = Obio@dbDetailList$db.user, 
+            password = db.pwd, 
+            host = Obio@dbDetailList$host, 
+            dbname = "operational"
+        )
+    
+        query <- paste0("DELETE FROM reports WHERE experiment_id = '",experiment_id,"';")
+    
+        dfTest <- DBI::dbGetQuery(dbDB, query)
+        DBI::dbDisconnect(dbDB)
+    }
+      
+    createReport <- TRUE
+}
+
+if (createReport){
+    reportString1 <- paste0(
+      '<p><strong>Getting Started:</strong></p><p>In this section, you may make notes of interesting observations in the dataset. It is intended to facilitate the discussion of project participants. You may also copy and paste links to plots using the link Icon above.</p><p>In addition, you may want to leave here instructions for further bioinformatics analysis.</p><p>To examine your data, start by reviewing the [<a href="https://biologic.crick.ac.uk/mdata/',
+      Obio@parameterList$project_id,
+      '/html/Analysis_V1.html">Analysis_V1</a>] tab. Here you also may find links to <a href="https://biologic.crick.ac.uk/mdata/',
+      Obio@parameterList$project_id,'/html/report_tables/',Obio@parameterList$project_id,'.result.table.xlsx">download Excel result tables</a>.</p><p>If you have marker gene sets you\'d like to use to quickly assess the quality of these results - you may do so by turning them into heatmap displays in the <a href="https://biologic.crick.ac.uk/',Obio@parameterList$project_id,'/category-view?category_type=Create%20heat%20map">[CategoryView] > Create Heatmap tab</a> (this will accept mouse gene sets copied and pasted from Excel (official gene names only) or official mouse gene names separated by comma).</p>'
+  )
+    
+  reportString2 <- paste0('
+      <p></p><p>All figures in this data analysis have unique URLs - if you wish to write a paragraph about an interesting observation in this report you can do this and include direct links to plots to facilitate discussion with your co-workers. Simply mark the words that should become the link to the plot, use the pin icon in the report tab above and copy and paste the URL of the plot you wish to include. Once done with updating the report, press [Update] below the report to save the report.</p><p>Gene sets curated by your lab can be found in [CategoryView] Lab gene sets.</p><p></p><p><strong>ASF:</strong></p><p>Contributors to be added.</p><p</p><p><strong>Hypotheses and Questions to the Data</strong></p>'
+  )
+      
+   reportString3 <- paste0('   
+      <p><strong>Bioinformatics Tasks</strong></p><p>Leave instructions for bioinformatics tasks in this area.</p><p><strong>Tools</strong></p><p><strong>Result gene categories:</strong> If you wish to add additional gene categories specific to this project or your lab to the result summary and the CategoryView section, please fill in those in <a href="https://biologic.crick.ac.uk/mdata/sll378/html/report_tables/Example.category.table.xlsx">this template</a>, save it and send it back to your analyst by email. A gene category may consist of either official hgnc (human) or mgi (mouse) gene symbols. You may mix human and mouse origin gene categories, but please do not mix the two types of gene symbols with one category.</p><p></p>')
+      
+  reportString4 <- paste0('      
+      <p><strong>Glossary:</strong></p><p><strong>2D scatterplots:</strong> In experiments with a large number of data points, such as an RNA-Sequencing experiment, the number of data points plotted is limited to the most variable 2000 genes in the experiment. This is to achieve an acceptable loading time for figures. If you require for instance a figure with all data points for a report, bioinformatics will create this manually upon request. The main purpose of this app is to give you a quick overview of your data and to enable discovery. In-depth checks and follow-ups will be conducted manually upon request.</p><p><strong>Heatmaps: </strong>In experiments with a large number of data points, such as an RNA-Sequencing experiment, the number of data points plotted is limited to the most variable 2000 genes in the experiment. Heatmaps in RNA-sequencing experiments usually represent row-averaged TPM-values. To get there, the average of all TPM values for all samples is calculated for a given gene, and then all samples are divided by this averaged (mean) TPM value. This representation gives you an idea of which samples exhibit an above-average normalized read count (depicted in red) and a below-average read-count (depicted in blue). For a better overview, samples are clustered on the y-axis according to gene names, but not on the x-axis (by samples). Please contact bioinformatics if you require a depiction in which samples are clustered as well. When reviewing a category result, all genes detected for that category are given in the table below the heatmap.</p><p><strong>Boxplots in the GeneView Section</strong></p><p>Boxplots in the GeneView section give you an idea on the number of normalized reads recorded for a given gene in your experiment in each sample. Thus it gives you an immediate idea on the closeness of your replicates.</p><p><strong>TPM values:</strong> <strong>TPM (Transcripts Per Kilobase Million)</strong></p>')
+      
+  reportString5 <- paste0('<p>How to get there: (1) Divide the read counts by the length of each gene in kilobases. This gives you reads per kilobase (RPK). (2) Count up all the RPK values in a sample and divide this number by 1,000,000. This is your per million\x94 scaling factor. (3) Divide the RPK values by the \x93per million\x94 scaling factor. This gives you TPM.</p><p><strong>Information on duplicaton rates</strong></p><p><a href="https://www.ncbi.nlm.nih.gov/pubmed/27156886">Parekh et al.</a> have examined the impact of PCR-amplification on differential gene expression analyses by RNA-Seq.</p><p><strong>Relevance and implication of the number of sample replicates in an RNA-seq experiment</strong></p><p><a href="https://www.ncbi.nlm.nih.gov/pubmed/27022035">Schurch et al.</a> have systematically examined the impact of the number of replicates on the quality of the results differential gene expression analyses in RNA-seq experiments.</p>')
+  
+  reportString <- paste0(
+      reportString1,
+      reportString2,
+      reportString3,
+      reportString4, 
+      reportString5
+  )
+  
+  timeStamp <- format(as.POSIXlt(Sys.time()),'%Y-%m-%d %H:%M:%S')
+  
+  dfUpload <- data.frame(
+      id = id,
+      experiment_id = experiment_id,
+      content = reportString,
+      created_at = timeStamp,
+      updated_at = timeStamp
+  )
+  
+  biologicSeqTools2::upload.datatable.to.database(
+      host = Obio@dbDetailList$host,
+      user = Obio@dbDetailList$db.user,
+      password = db.pwd,
+      prim.data.db = "operational",
+      dbTableName = "reports",
+      df.data = dfUpload,
+      db.col.parameter.list = list(
+          "INT(10) NULL DEFAULT NULL" = c("id", "experiment_id"),
+          "LONGTEXT NULL DEFAULT NULL" = c("^content$"),
+          "TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP" = c("created_at", "updated_at")
+      ),
+      increment = 5000,
+      new.table = FALSE,
+      first.row.name.index = 1,
+      startOnlyWithConnectionCount1 = FALSE,
+      cols2Index = NULL,
+      indexName = NULL,
+      mode = "MySQL",
+      addRowNamesColumn = FALSE
+  )
+  
+}
+
+## Done                                                                      ##
+###############################################################################
+
+###############################################################################
+## Add users                                                                 ##
+
+
+##                                                                           ##
+###############################################################################
+
+```
+

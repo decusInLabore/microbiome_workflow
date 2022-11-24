@@ -1,0 +1,112 @@
+<!-- Set Parameters Module -->
+<!-- Set the chnkPrefix to make all chunks unique in the overall folder -->
+```{r, echo=TRUE, eval=TRUE, warning=FALSE}
+chnkPrefix <- "edit.RSEM.tpm."
+VersionPdfExt <- VersionPdfExt <- paste0(".",chnkPrefix,"V", gsub("-", "", Sys.Date()), ".pdf")
+
+```
+
+
+### Check RSEM table, create tpm table
+```{r, echo=TRUE, eval=TRUE, warning=FALSE, results="asis"}
+###############################################################################
+## Check/Edit RSEM table                                                     ##
+
+Obio@parameterList$RSEMcountDataFile <- count.data.file
+
+dfRSEM <- read.delim(
+    Obio@parameterList$RSEMcountDataFile,
+    header = TRUE, 
+    sep = "\t",
+    stringsAsFactors = F
+)
+
+## Detect path to delete ##
+testSampleID <- as.vector(Obio@dfDesign$sample.id)[1]
+pos <- grep(paste0(".", testSampleID, "."), names(dfRSEM))
+
+if (length(pos) == 1){
+  strings <- unlist(strsplit(names(dfRSEM)[pos], paste0(".", testSampleID, ".")))
+  for (i in 1:length(strings)){
+      names(dfRSEM) <- gsub(strings[i], "", names(dfRSEM))
+  }
+} 
+
+names(dfRSEM) <- gsub("^\\.", "", names(dfRSEM))
+names(dfRSEM) <- gsub("\\.$", "", names(dfRSEM))
+
+## check if all design sampleIDs are present ##
+designSampleIDs <- unique(as.vector(Obio@dfDesign$sample.id))
+RSEMSampleIDs <- unique(names(dfRSEM)[2:ncol(dfRSEM)])
+
+notPresent <- designSampleIDs[!(designSampleIDs %in% RSEMSampleIDs)]
+
+if (length(notPresent) > 0){
+    stop("Check for missing samples in RSEM count file")
+}
+
+## Save edited RSEM table ##
+write.table(
+    dfRSEM, 
+    Obio@parameterList$RSEMcountDataFile, 
+    row.names = F,
+    sep = "\t"
+)
+
+## Add RSEM count table to biologic object ##
+
+###############################################################################
+## Retrieve count matrix (RSEM output)                                       ##
+
+mRSEM <- biologicSeqTools::readAndPrepareCountMatrix(
+    count.data.fn = Obio@parameterList$RSEMcountDataFile,
+    string.to.be.deleted.in.raw.counts.columns = '',
+    df.design = Obio@dfDesign
+)
+
+Obio@RSEMcountMatrix <- mRSEM
+
+## Done retrieving count matrix                                              ##
+###############################################################################
+
+
+###############################################################################
+## Add TPM or FPKM table                                                     ##
+
+Obio <- biologicSeqTools::addTPMorFPKMtable(
+    Obio,
+    addTPM = TRUE,
+    addFPKM = FALSE
+)
+
+## Done adding TPM or FPKM table                                             ##
+###############################################################################
+
+
+
+
+
+
+###############################################################################
+## Save Obio Object                                                          ##
+
+
+save(Obio,
+     file = paste0(
+         Obio@parameterList$localWorkDir,
+         Obio@parameterList$project_id,
+         ".bioLOGIC.Robj"
+     )
+)
+
+print("R bioLOGIC single cell object initialized.")
+
+##                                                                           ##
+###############################################################################
+
+###############################################################################
+## Run alignment shell scripts                                               ##
+
+
+```
+

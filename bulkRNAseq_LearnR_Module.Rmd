@@ -1,0 +1,1133 @@
+---
+output: 
+    html_document:
+        df_print: tibble
+        toc: true
+        toc_depth: 5
+        toc_float: true
+        css: /camp/stp/babs/working/boeings/Stefan/protocol_files/github/boeings/templates/style/style.css
+
+always_allow_html: yes
+---
+
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+    #tidy = TRUE,
+    tidy.opts = list(width.cutoff = 120),
+    message = FALSE,
+    warning = FALSE
+)
+```
+
+
+```{r setup, include=FALSE}
+###############################################################################
+## Recommended R-version                                                     ##
+
+# module purge;source /camp/stp/babs/working/software/modulepath_new_software_tree_2018-08-13;module load pandoc/2.2.3.2-foss-2016b;ml R/4.0.3-foss-2020a
+
+# Check processes 
+# lsof /dev/pts/*
+
+## Done                                                                      ##
+###############################################################################
+
+
+###############################################################################
+## Set the environment                                                       ##
+
+if (!require("remotes")){
+  install.packages("remotes")
+}
+
+remotes::install_github("rstudio/renv")
+
+if (!file.exists("renv.lock")){
+    renv::init()
+} else {
+    renv::restore(prompt=FALSE)
+}
+
+
+renv::install("bioc::DESeq2")
+renv::install("bioc::clusterProfiler")
+renv::install("decusInLabore/biologicSeqTools2")
+
+## Done                                                                      ##
+###############################################################################
+
+
+###############################################################################
+## Set knitr options                                                         ##
+
+knitr::opts_chunk$set(
+    tidy = F,
+    tidy.opts = list(width.cutoff = 120),
+    message = FALSE,
+    warning = FALSE,
+    #dev="png"
+    dev = "png", dev.args = list(type = "cairo-png"),
+    fig.width=7,  # default setting is 7 
+    fig.height=5,  # default setting is 5
+    fig.retina=1  # default setting is 1
+    #fig.path = "images/"
+)
+
+##                                                                           ##
+###############################################################################
+
+###############################################################################
+## Set global variables                                                      ##
+
+cDir <- getwd()
+setwd("..")
+workdir <- getwd()
+setwd(cDir)
+
+figureCount <- 1
+tableCount <- 1
+upload.results.to.database <- TRUE
+shinyBaseServerURL <- "shiny-bioinformatics.crick.ac.uk"
+#urlString <- "biologic.crick.ac.uk"
+
+## Done                                                                      ##
+###############################################################################
+
+
+###############################################################################
+## Load biologic object from part A                                          ##
+FN <- paste0("../", list.files("..")[grep("bioLOGIC.Robj", list.files(".."))])
+load(FN)
+## Done                                                                      ##
+###############################################################################
+
+```
+
+
+<!-- Essential: Load Obio Data Object ---------------------------------------->
+```{r child = 'src/modules/part_B/B.1.set.parameters.Rmd', eval=TRUE}
+```
+
+<!-- Optional set data access parameters for R-users ------------------------->
+```{r child = 'src/modules/part_B/B.1.2.set.data.access.parameters.Rmd', eval=TRUE}
+```
+
+
+## Installing a required R-package
+```{r load_packages, echo=TRUE, eval=T, warning=FALSE}
+###############################################################################
+## Install bioLOGIC package                                                  ##
+# 
+
+# This installation step only needs to be run once on your computer.
+requiredPackages <- c("RMySQL", "ggplot2", "ggrepel", "ComplexHeatmap","circlize","tibble","DT")
+installedPackages <- installed.packages()[,"Package"]
+notInstalled <- requiredPackages[!(requiredPackages %in%  installedPackages)]
+
+
+if (length(notInstalled) > 0){
+    sapply(notInstalled, install.packages)
+}
+
+if (length(grep("bioLOGIC", as.vector(installed.packages()[,"Package"]))) ==0 ){
+    install.packages(
+        "http://biologic-db.org/packages/bioLOGIC_1.0.tar.gz", 
+        repos = NULL, 
+        type="source"
+    )
+}
+
+
+## Done installing package                                                   ##
+###############################################################################
+```
+
+```{r create user, echo=F, eval=TRUE, warning=FALSE}
+###############################################################################
+## Create user                                                               ##
+
+figureCount <- 1
+chnkVec <- as.vector(NULL, mode = "character")
+VersionPdfExt <- paste0(".V", gsub("-", "", Sys.Date()), ".pdf")
+if (dir.exists("/Volumes/babs/working/boeings/")){
+    hpc.mount <- "/Volumes/babs/working/boeings/"
+} else if (dir.exists("Y:/working/boeings/")){
+    hpc.mount <- "Y:/working/boeings/"
+} else if (dir.exists("/camp/stp/babs/working/boeings/")){
+    hpc.mount <- "/camp/stp/babs/working/boeings/"
+} else {
+    hpc.mount <- ""
+}
+
+if (!require("remotes")){
+  install.packages("remotes")
+}
+
+remotes::install_github("rstudio/renv")
+
+if (!file.exists("renv.lock")){
+    renv::init()
+} else {
+    renv::restore(prompt=FALSE)
+}
+
+
+renv::install("bioc::DESeq2")
+renv::install("bioc::clusterProfiler")
+renv::install("decusInLabore/biologicSeqTools2")
+
+## Heatmap setup ##
+## Select Heatmap samples ##
+# FN <- paste0(hpc.mount, "Projects/reference_data/documentation/BC.parameters.txt")
+# dbTable <- read.delim(
+#     FN, 
+#     sep = "\t",
+#     stringsAsFactors = F
+# )
+# db.pwd <- as.vector(dbTable[1,1])
+
+## Loading the BABS password ##
+# if (upload.results.to.database){
+    FN <- paste0(hpc.mount, "Projects/reference_data/pwd_folder/babs.txt")
+    dbTable <- read.delim(
+      FN,
+      header = F,
+      sep = "\t",
+      stringsAsFactors = F
+    )
+#}
+
+db.pwd <- as.vector(dbTable[1,1])
+
+#setwd(Obio@parameterList$workdir)
+ObioFN <- paste0("../",list.files("..")[grep(".bioLOGIC.Robj", list.files(".."))])
+load(ObioFN)
+
+```
+
+```{r create db user, echo=F, eval=T, warning=FALSE}
+
+
+doQuery <- function(
+    Obio, 
+    query,
+    resOut = FALSE
+){
+    library(RMySQL)
+    res <- NULL
+dbDB <- dbConnect(
+    drv = RMySQL::MySQL(), 
+    user = Obio@dbDetailList$db.user, 
+    password = db.pwd, 
+    host = Obio@dbDetailList$host,
+    dbname = Obio@dbDetailList$primDataDB
+) 
+tryCatch(res <- dbGetQuery(dbDB, query), error = function(c) {
+    c$message <- stop(paste0("Error in ", query, "."))
+  })
+dbDisconnect(dbDB)
+if (resOut){
+    return(res)
+}
+}
+
+username <- paste0(Obio@parameterList$project_id,"_da")
+sPwd <-c(2:9,letters,LETTERS)
+pass <- paste(sample(sPwd,8),collapse="")
+
+query0 <- paste0("SELECT User, Host FROM mysql.user WHERE User = '",username,"' AND Host = '10.%';")
+res <- doQuery(Obio, query = query0, resOut=TRUE)
+if (nrow(res) > 0){
+    query0a <- paste0("DROP USER '",username,"'@'10.%';")   
+    doQuery(Obio, query = query0a)
+}
+
+query1 <- paste0(
+    "CREATE USER '",
+    username, 
+    "'@'10.%' IDENTIFIED BY '",
+    pass,
+    "';"
+)
+    
+doQuery(Obio, query = query1)
+# mysql -h 10.27.241.82 -u boeingS -p
+# 5+3f4nB04042018
+
+## Assign project tables ##
+
+## Design
+designTB <- Obio@parameterList$designdbTableName
+query2 <- paste0("GRANT SELECT on ",Obio@dbDetailList$primDataDB,".",designTB ," TO ",username,"@'10.%';")
+
+doQuery(Obio, query = query2)
+## Main
+mainTB <- Obio@parameterList$rnaseqdbTableName
+query3 <- paste0("GRANT SELECT on ",Obio@dbDetailList$primDataDB,".",mainTB ," TO ",username,"@'10.%';")
+doQuery(Obio, query = query3)
+
+## PCA
+pcaTB <- Obio@parameterList$PCAdbTableName
+query4 <- paste0("GRANT SELECT on ",Obio@dbDetailList$primDataDB,".",pcaTB ," TO ",username,"@'10.%';")
+doQuery(Obio, query = query4)
+
+host <- Obio@parameterList$host
+db <- Obio@dbDetailList$primDataDB
+
+designString <- designTB
+mainTBstring <- mainTB
+pcaDbTable <- pcaTB
+
+## Done installing package                                                   ##
+###############################################################################
+
+
+userString <- paste0('username <- "', username,'"')
+passString <- paste0('pass <- "', pass,'"')
+hostString <- paste0('host <- "', host,'"')
+dbString <- paste0('db <- "', db,'"')
+
+designString <- paste0('designTB <- "', designTB,'"')
+mainTBstring <- paste0('mainTB <- "', mainTB,'"')
+pcaDbTable <- paste0('pcaTB <- "', pcaTB,'"')
+
+species <- Obio@parameterList$species
+geneIDcolumn <- Obio@parameterList$geneIDcolumn
+alignmentGeneID <- Obio@parameterList$primaryAlignmentGeneID
+
+speciesString <- paste0('species <- "', species,'"')
+alignmentGeneIDString <- paste0('alignmentGeneID <- "', alignmentGeneID,'"')
+geneIDstring <- paste0('geneIDcolumn <- "', geneIDcolumn,'"')
+
+
+pos <- grep("designTScol", names(Obio@parameterList))
+if (length(pos) > 0){
+    if (!is.null(Obio@parameterList$designTScol)){
+        designTScol <- Obio@parameterList$designTScol
+        timepointString <- paste0('designTScol <- "', designTScol,'"')
+    }
+} else {
+     timepointString <- ""   
+}
+    
+
+
+
+```
+
+
+## Outline
+The purpose of this R-data access module is that you get to work with your pre-analysed sequencing data. You might want to use this to practice a bit of R or to customise your result figures. If you eventually do use your own figures for presentations your analyst would be most happy to review them with you, just to make sure data is represented appropriately. 
+
+### How does it work? 
+Everything that is presented in a grey code box is supposed to be copied and pasted into your local R-console or into Rstudio on demand on the cluster. This will then download your data for this project and guide you through the steps that are necessary to create the figures shown in this scaffold. Once you understand the basich mechanics, you can start editing figures, for example changing colors, gene selections, and so on. 
+
+### Documenting your work
+Whenever you do coding work, it is good to keep a record of everything you've done. A R-markdown document, like the one you are currently reading, is a great way of doing this. You can download this R markdown document <a href="report_tables/basecode.Rmd", target = "_blank">here</a>. When you work on the code, edit the code in the context of this document and save it as a record. 
+
+## Database access variables (run in R)
+Let's get started. First we need to set a few variables so we can download your project data into your R-session. For safety reasons, this will only work if you are in the Crick building or VPN connected to the Crick. 
+
+<style>
+div.grey pre { background-color:#f5f5f5; }
+div.grey pre.r { background-color:black; }
+</style>
+
+Here we set the database access variables so we can get your data in </br></br>
+
+<div class = "grey">
+```{r dbparameters1, echo=F, eval=T, warning=FALSE,comment=NA}
+
+oneString <- paste0(
+    userString,
+    "\n",
+    passString,
+    "\n",
+    hostString,
+    "\n",
+    dbString,
+    "\n"
+)
+
+cat(oneString)
+
+
+```
+</div>
+
+Here we define the tables from which we draw the data:
+<div class = "grey">
+```{r dbparameters2, echo=F, eval=T, warning=FALSE,comment=NA}
+
+twoString <- paste0(
+    designString,
+    "\n",
+    mainTBstring,
+    "\n",
+    pcaDbTable,
+    "\n"
+)
+
+cat(twoString)
+
+
+```
+</div>
+
+
+And here we set a few more variables we'll need for plotting:
+<div class = "grey">
+```{r dbparameters3, echo=F, eval=T, warning=FALSE,comment=NA}
+
+threeString <- paste0(
+    speciesString,
+    "\n",
+    geneIDstring,
+    "\n",
+    alignmentGeneIDString,
+    "\n",
+    timepointString
+)
+
+cat(threeString)
+
+
+```
+</div>
+
+ 
+
+## Loading relevant data into your R-session
+
+Next, let's load your project data. We will need this as a basis for making the plots further down. 
+
+```{r load_data2, echo=TRUE, eval=T, warning=FALSE}
+
+library(bioLOGIC)
+
+## Load the design table from database. Here we will retrieve information on samples. 
+dfDesign <- import.db.table.from.db(
+    dbname = db,
+    dbtable = designTB,
+    host = host,
+    user = username,
+    password = pass
+)
+
+
+## Load main data table from database. In this table a lot of gene-level information for this project is assembled. 
+
+dfData <- import.db.table.from.db(
+    dbname = db,
+    dbtable = mainTB,
+    host = host,
+    user = username,
+    password = pass
+)
+
+## Load main pca table from database. This table contains cell-level PCA information.
+dfPCA <- import.db.table.from.db(
+    dbname = db,
+    dbtable = pcaTB,
+    host = host,
+    user = username,
+    password = pass
+)
+
+## For some plots we want to limit the number of genes to the most interesting, so let's get those in a vector:
+
+# Most variable gene names
+dfVar <- dfData[dfData$logFC_cut_off != 0 ,c(geneIDcolumn, alignmentGeneID)]
+mostVarGenes <- as.vector(unique(sort(dfVar[,geneIDcolumn])))
+mostVarGenes <- na.omit(mostVarGenes[mostVarGenes != ""])
+# Most variable gene IDs
+mostVarIDs <- as.vector(unique(sort(dfVar[,alignmentGeneID])))
+mostVarIDs <- na.omit(mostVarIDs[mostVarIDs != ""])
+
+```
+
+
+## Scatterplot Tutorial
+
+### Volcano Plot
+Let's start by making a Volcano and a MA-plot for this dataset. First we are going to get the relevant data. 
+```{r generate_plot, echo=TRUE, eval=TRUE, warning=FALSE, results="asis", fig.align="center", fig.cap="*Example Volcanoplot:* The above code will produce this Volacno plot. "}
+
+## Let's get all log-fold changes and adjusted p-values:
+
+selVec <- sort(
+    c(
+        names(dfData)[grep("contrast_[0-9]_logFC", names(dfData))],
+        names(dfData)[grep("contrast_[0-9]_lg10p", names(dfData))]
+    )
+)
+
+selVec <- c(
+    geneIDcolumn,
+    selVec
+)
+
+# Now here we have the Volcano-plot log-fold changes and log10 p-values present in this project. 
+
+selVec
+
+# Now lets make a plot for the first 
+selVec <- selVec[1:3]
+
+## Now let's get these data columns out of the main data table.
+dfPlotData <- unique(dfData[,selVec])
+names(dfPlotData)
+names(dfPlotData) <- gsub("contrast_[0-9]{1,2}_", "", names(dfPlotData))
+# head(dfPlotData)
+
+logFCcolName <- names(dfPlotData)[grep("logFC", names(dfPlotData))]
+lg10pColName <- names(dfPlotData)[grep("lg10p", names(dfPlotData))]
+
+## For plotting we are using the R-package ggplot. This is a widely used, comprehensive package to make beautiful plots. More information on that here: https://ggplot2.tidyverse.org/
+
+library(ggplot2)
+
+## Let's add an example for custom coloring here. We are going to highlight the most variable genes in this scatterplot. To do that, we need to add a color column to the plot data dataframe.
+
+
+dfPlotData[["color"]] <- "Normal"
+dfPlotData[dfPlotData[,geneIDcolumn] %in% mostVarGenes, "color"] <- "Most_Variable"
+
+## set dotsize 
+dotsize <- 1
+## set legenddotsize 
+legendDotSize <- 5
+
+## Set dot colors
+library(RColorBrewer)
+
+#If you need to select a color palete, use this code:
+#par(mar=c(3,4,2,2))
+#display.brewer.all()
+
+                 
+categories <- c("Normal", "Most_Variable")
+
+colorVec <- c("black", "red")
+
+## Let's have a look at the color vector
+
+## you could also set the colors manualy by doing
+# colorVec <- "#E41A1C" "#999999"
+
+## Finally we assign names to the vector. These names have to match the entries in the color column of dfPlot
+names(colorVec) <- categories
+
+## And here is the resulting color vector
+colorVec
+
+xMaxVal <- max(abs(dfPlotData[,logFCcolName]))
+
+## Order the data.frame. In this step we organise how the dots are plotted. In general, the largest category (here Normal), should come first, followed by less abundant categories.
+dfPlotData$color <- factor(dfPlotData$color, levels = c("Normal", "Most_Variable"))
+dfPlotData <- dfPlotData[order(dfPlotData$color, decreasing = F), ]
+
+p1 <- ggplot(
+    data = dfPlotData, 
+    aes_string(x=logFCcolName, y=lg10pColName, color = "color")
+) + geom_point( shape=16, size = dotsize
+) + scale_colour_manual(name = "Variability" ,values = colorVec
+
+) + theme_bw(
+)  +  theme(
+    axis.text.y   = element_text(size=8),
+    axis.text.x   = element_text(size=8),
+    axis.title.y  = element_text(size=8),
+    axis.title.x  = element_text(size=8),
+    axis.line = element_line(colour = "black"),
+    panel.border = element_rect(colour = "black", fill=NA, size=1),
+    plot.title = element_text(hjust = 0.5, size = 12)
+) + xlim(-1*xMaxVal,xMaxVal
+) + ggtitle("Example Volcano Plot"
+) + xlab(gsub("_", " ", logFCcolName)
+) + ylab(gsub("_", " ", lg10pColName)            
+) + guides(col = guide_legend(override.aes = list(shape = 16, size = legendDotSize))
+) 
+     
+# If you want to view the plot in your R-session do:
+print(p1)
+
+# If you want to save the plot as pdf file in your current directory do:
+FN <- "test.volcanoplot.pdf"
+pdf(FN)
+    print(p1)
+dev.off()
+
+# You can look up your current working directory by doing: getwd()
+
+```
+
+
+### MA-Plot
+Let's start by making a Volcano and a MA-plot for this dataset. First we are going to get the relevant data. 
+```{r generate_MA_plot, echo=TRUE, eval=TRUE, warning=FALSE, results="asis", fig.align="center", fig.cap="*Example MA-Plot:* The above code will produce this MA plot."}
+
+## Let's get all log-fold changes and adjusted p-values:
+
+selVec <- sort(
+    c(
+        names(dfData)[grep("contrast_[0-9]_logFC", names(dfData))],
+        names(dfData)[grep("contrast_[0-9]_lg2BaseMean", names(dfData))],
+        names(dfData)[grep("contrast_[0-9]_padj", names(dfData))]
+    )
+)
+
+selVec <- c(
+    geneIDcolumn,
+    selVec
+)
+
+# Now here we have the Volcano-plot log-fold changes and log10 p-values present in this project. 
+
+selVec
+
+# Now lets make a plot for the first 
+selVec <- selVec[1:4]
+
+## Now let's get these data columns out of the main data table.
+dfPlotData <- unique(dfData[,selVec])
+names(dfPlotData)
+names(dfPlotData) <- gsub("contrast_[0-9]{1,2}_", "", names(dfPlotData))
+# head(dfPlotData)
+
+logFCcolName <- names(dfPlotData)[grep("logFC", names(dfPlotData))]
+padjColName <- names(dfPlotData)[grep("padj", names(dfPlotData))]
+lg2BaseMeanColName <- names(dfPlotData)[grep("lg2BaseMean", names(dfPlotData))]
+
+## Let's clean up the base data and remove all entries that have a lg2BaseMean of 0:
+dfPlotData <- dfPlotData[dfPlotData[,lg2BaseMeanColName] != 0,]
+
+## For plotting we are using the R-package ggplot. This is a widely used, comprehensive package to make beautiful plots. More information on that here: https://ggplot2.tidyverse.org/
+
+library(ggplot2)
+
+## Let's add an example for custom coloring here. We are going to highlight the most variable genes in this scatterplot. To do that, we need to add a color column to the plot data dataframe.
+
+## Now let's color by significantly up-regulated genes in red, and significantly downregulated genes in blue
+
+dfPlotData[["color"]] <- "NS"
+dfPlotData[dfPlotData[, logFCcolName] > 0 & dfPlotData[, padjColName] < 0.05, "color"] <-  "Up"
+
+dfPlotData[dfPlotData[, logFCcolName] < 0 & dfPlotData[, padjColName] < 0.05, "color"] <-  "Down"
+
+## Re-order dfPlotData for better results
+
+## Let's have a look at the color vector
+
+
+colorVec <- c("blue", "red","black")
+
+names(colorVec) <- c("Down", "Up", "NS")
+
+
+## And here is the resulting color vector
+colorVec <- colorVec[names(colorVec) %in% dfPlotData$color]
+
+dfPlotData$color <- factor(dfPlotData$color, levels = names(colorVec))
+dfPlotData <- dfPlotData[order(dfPlotData$color, decreasing = F), ]
+
+## Now let's also add a label for the 10 most significantly up- and down-regulated genes.This number can be changed in the variable Nsel. Here we use the R package ggrepel.
+
+library(ggrepel)
+
+Nsel <- 10
+
+## Let's order the data frame by log-fold change
+dfPlotData <- dfPlotData[order(dfPlotData[,logFCcolName], decreasing = T), ]
+topGenes <- as.vector(dfPlotData[1:Nsel,geneIDcolumn])
+
+dfPlotData <- dfPlotData[order(dfPlotData[,logFCcolName], decreasing = F), ]
+bottomGenes <- as.vector(dfPlotData[1:Nsel,geneIDcolumn])
+
+dfPlotData[["label"]] <- ""
+dfPlotData[dfPlotData[,geneIDcolumn] %in% c(topGenes, bottomGenes), "label"] <- dfPlotData[dfPlotData[,geneIDcolumn] %in% c(topGenes, bottomGenes), geneIDcolumn]
+
+## set dotsize 
+dotsize <- 1
+## set legenddotsize 
+legendDotSize <- 5
+
+## Set dot colors
+library(RColorBrewer)
+
+#If you need to select a color palete, use this code:
+#par(mar=c(3,4,2,2))
+#display.brewer.all()
+
+                
+
+yScaleMax <- max(abs(dfPlotData[,logFCcolName]))
+
+## Now let's first make the MA-plot without lables
+
+plotNoLabels <- ggplot(
+    data = dfPlotData, 
+    aes_string(x=lg2BaseMeanColName, y=logFCcolName, color = "color", label = "label")
+) + geom_hline(yintercept = 0, color = "black", size=0.5
+) + geom_hline(yintercept = c(-2,2), color = "grey", size=0.5, linetype = 2               
+) + geom_point( shape=16, size = dotsize
+) + scale_colour_manual(name = "Significant" ,values = colorVec
+) + theme_bw(
+)  +  theme(
+    axis.text.y   = element_text(size=8),
+    axis.text.x   = element_text(size=8),
+    axis.title.y  = element_text(size=8),
+    axis.title.x  = element_text(size=8),
+    axis.line = element_line(colour = "black"),
+    panel.border = element_rect(colour = "black", fill=NA, size=1),
+    plot.title = element_text(hjust = 0.5, size = 12)
+) + ylim(-1*yScaleMax, yScaleMax
+) + ggtitle("Example MA-Plot"            
+) + xlab(gsub("_", " ", logFCcolName)
+) + ylab(gsub("_", " ", logFCcolName)            
+) + guides(col = guide_legend(override.aes = list(shape = 16, size = legendDotSize))
+) 
+     
+# If you want to view the plot in your R-session do:
+print(plotNoLabels)
+
+## And now let's add the labels:
+plotWithLabels <- plotNoLabels + geom_text_repel(size = 3)
+
+print(plotWithLabels)
+
+
+# If you want to save the plot as pdf file in your current directory do:
+FN <- "test.MA.plot.with.labels.pdf"
+pdf(FN)
+    print(plotWithLabels)
+dev.off()
+
+# You can look up your current working directory by doing: getwd()
+
+```
+
+## Make Heatmap
+We can make a heatmap based on normalised read counts and TPM values in an experiment. If a heatmap is made on normalized read counts, we have to re-compute the normalized read counts matrix every time we add or remove a sample, as the normalized read count values change based on which samples are considered for normalization. This is not the case when using TPM values, as normalization is only based on gene length and sequencing depth of the sample. Therefore we can add or remove samples without having to recompute the TPM matrix. 
+
+To make the heatmap, we need to prepare a heatmap matrix. Also we need to retrieve sample information, such as which sample group or dataseries a sample belongs to.
+
+### Heatmap Data Preparation
+We will first retrieve the design and TPM matrix for your experiment. Then we will select the genes to be present in the heatmap (here the `r length(mostVarGenes)` most variable genes) and 
+```{r generate_heatmap, echo=TRUE, eval=TRUE, warning=FALSE, results="asis"}
+## Load the design table from database. Here we will retrieve information on samples. 
+dfDesign <- import.db.table.from.db(
+    dbname = db,
+    dbtable = designTB,
+    host = host,
+    user = username,
+    password = pass
+)
+
+
+## Load main data table from database. In this table a lot of gene-level information for this project is assembled. 
+
+dfData <- import.db.table.from.db(
+    dbname = db,
+    dbtable = mainTB,
+    host = host,
+    user = username,
+    password = pass
+)
+
+## For some plots we want to limit the number of genes to the most interesting, so let's get those in a vector:
+
+# Most variable gene names
+dfVar <- dfData[dfData$logFC_cut_off != 0 ,c(geneIDcolumn, alignmentGeneID)]
+mostVarGenes <- as.vector(unique(sort(dfVar[,geneIDcolumn])))
+mostVarGenes <- na.omit(mostVarGenes[mostVarGenes != ""])
+# Most variable gene IDs
+mostVarIDs <- as.vector(unique(sort(dfVar[,alignmentGeneID])))
+mostVarIDs <- na.omit(mostVarIDs[mostVarIDs != ""])
+
+
+## The TPM values are stored in colums pre-fixed with norm_counts ##
+selVec <- c(
+    geneIDcolumn, 
+    names(dfData)[grep("norm_counts", names(dfData))]
+)
+
+# If you want to exclude samples from the heatmap, simply delete those samples from the selection vector selVec. For example, to remove the 2, 3 and 4 element of the selection vector you can do selVec <- selVec[-c(2, 3, 4)]
+```
+
+<style>
+div.red pre { background-color:#ffcccb; }
+div.red pre.r { background-color:black; }
+</style>
+
+
+<div class = "red">
+```{r warning1, echo=F, eval=T, warning=FALSE,comment=NA}
+cat("You must start from this point in order to *create heatmaps that include fewer samples*.\n\nIf you want to exclude samples from the heatmap, simply delete those samples from the selection vector selVec. For example, to remove the 2, 3 and 4 element of the selection vector you can do selVec <- selVec[-c(2, 3, 4)]")
+```
+</div>
+
+```{r generate_heatmap2, echo=TRUE, eval=TRUE, warning=FALSE, results="asis"}
+dfTPM <- unique(dfData[,selVec])
+
+## For a nicer diplay later on, let's edit the sample names
+names(dfTPM ) <- gsub("norm_counts_", "", names(dfTPM ))
+names(dfTPM) <- gsub("_TPM", "", names(dfTPM ))
+
+## Next we want to reduce the dataframe dfTPM, which currently contains TPM values for all genes to a dataframe that only contains TPM values for the genes for which wen want to make a heatmap. In this example, we select the most variable genes in this experiment, but you could replace this gene list with any gene list of interest. 
+
+heatmapGeneVec <- mostVarGenes
+
+## If we have a lot of genes, as in this example, we might want to label only a few select of those genes. In this example we are going to select 10 random genes for highlighting in the figure, but you could choose any number of specific genes here:
+heatmapLabelGeneVec <- heatmapGeneVec[sample(x = 1:length(heatmapGeneVec), size = 10)]
+
+## Reducing the dfTPM dataframe
+dim(dfTPM)
+
+dfTPM <- dfTPM[dfTPM[, geneIDcolumn] %in% heatmapGeneVec, ]
+
+dim(dfTPM)
+
+## Next we want the gene names to become row.names in dfTPM and to turn dfTPM into a numeric matrix. Rownames do not allow duplicated names. In case you encounter two rows with the same gene name, you will have to rename on of those, e.g. to Genename2. This duplication sometimes happens when the same gene name is assigned to one Ensembl identifier. Ensembl identifiers are the currency in which the primary gene alignment is done. 
+
+## Let's see if we have any duplicated gene names here:
+sum(duplicated(dfTPM[,geneIDcolumn]))
+
+duplicatedGeneNames <- dfTPM[duplicated(dfTPM[,geneIDcolumn]), geneIDcolumn]
+
+## This gene name duplication is a result of two alignment ensembl gene identifiers pointing to the same gene name. This can be for a number of reasons and can be examined by following up like this: 
+DT::datatable(unique(dfData[dfData[,geneIDcolumn] %in% duplicatedGeneNames,c(geneIDcolumn, alignmentGeneID)]))
+
+## For the sake of the sample here, we are going to simply add an 1 index to the duplicated gene enrty to create a unique list. 
+
+dfTPM[duplicated(dfTPM[,geneIDcolumn]), geneIDcolumn] <- paste0(dfTPM[duplicated(dfTPM[,geneIDcolumn]), geneIDcolumn] , "_1")
+
+## Let's check again for duplicates:
+sum(duplicated(dfTPM[,geneIDcolumn]))
+
+## Now we can name the rows according to the geneID column and delete the gene ID column from the data frame
+row.names(dfTPM) <- dfTPM[,geneIDcolumn]
+
+dfTPM[,geneIDcolumn] <- NULL
+
+## Now our dataframe contains only numeric columns and we can transform it into a matrix
+mHM <- data.matrix(dfTPM)
+
+
+## Now we will calculate row-averages for each gene row, devide the TPM values for each gene and sample by the row averages and calculate the log2-value thereof. This is the value we are going to display in the heatmap. 
+
+## calculate row-means ##
+rowMeans <- apply(
+    mHM,
+    1,
+    function(x) mean(x)
+)
+    
+# We should not get any rowMeans of exatly 0, as this can only happen when a gene was not detected in any sample. But if it does, let's change those to something small, so we prevent a division by 0. It won't alter the final result, as 0/anything will still be 0. 
+
+rowMeans[rowMeans == 0] <- 0.001
+            
+## Now we calculate the log2 value for each element by column        
+for (i in 1:ncol(mHM)){
+    mHM[,i] <- log2(mHM[,i] / rowMeans)
+}
+            
+## A heatmap in general is more pretty if extreme values are curbed to an upper or lower limit. In this case we are going to choose 4 as that value, but you could leave away this step entirely or change the value from which on the red/blue color intensity does not increase anymore, even if the underlying value is bigger than 4 or smaller than -4. 
+
+hmMax <- 4
+mHM[mHM > hmMax] <- hmMax
+mHM[mHM< -1*hmMax] <- -1*hmMax
+
+## If we have less than 51 genes, we will show all gene names            
+if ( nrow(mHM) < 51){
+    showRowNames <- TRUE
+} else {
+    showRowNames <- FALSE
+}
+        
+## Now we are done preparing the data and can start making the heatmap
+
+library(ComplexHeatmap)
+library(circlize)
+
+## Let's select the color palette for the heatmap. The three hex color names represent the colors for low, middle and high. 
+
+f1 = colorRamp2(seq(-1*hmMax, hmMax, length = 3), c("#3060cf", "#fffbbc","#c4463a"))    
+
+
+## Let's make the annotatin color bars
+## In this example we will make one bar for the timepoint and one for the sample group
+
+## Create top annotation and colorbars ##
+# from https://www.biostars.org/p/368265/
+# from https://bioconductor.statistik.tu-dortmund.de/packages/3.1/bioc/vignettes/ComplexHeatmap/inst/doc/ComplexHeatmap.html
+
+## The sample annotation we get from the design file. From the design file we select the annotation we want to show in the heatmap. 
+
+## if this is a timecourse experiment, we will include that column, otherwise we just select the sample groups. 
+
+## Minimaly we will require the columns indicating the sample id and sample group memberships. 
+selVec <- c("sample_id","sample_group", "dataseries")
+
+if (exists("designTScol")){
+    if (sum(designTScol %in% names(dfDesign)) > 0){
+        selVec <- unique(c(selVec, designTScol))
+    }
+} 
+
+dfAnno <- unique(dfDesign[,selVec])
+
+if (exists("designTScol")){
+    if (sum(designTScol %in% names(dfDesign)) > 0){
+        ## Now let's make sure that the timepoint entries are numeric
+dfAnno[,designTScol] <- as.numeric(dfAnno[,designTScol])
+    }
+}
+
+
+
+
+## Next we want to make sure that the sample names in the sample.id column match those given as column names in the TPM matrix
+
+dfAnno <- dfAnno[dfAnno$sample_id %in% colnames(mHM),]
+
+row.names(dfAnno) <- dfAnno$sample_id
+dfAnno$sample_id <- NULL
+
+## Order columns in the same fashion as in the mHM matrix. This is important to get the correct top annotation after clustering.
+dfAnno <- dfAnno[colnames(mHM),]
+
+DT::datatable(dfAnno)
+      
+## Now let's create the color schemes for some displays:
+        
+## Add timepoint barchart color coded by intensity
+col_fun = circlize::colorRamp2(c(floor(min(as.numeric(dfAnno[,designTScol]))),  ceiling(max(as.numeric(dfAnno[,designTScol])))), c("lightgrey", "black"))
+  
+# If we have sample group colors specified in the design file, we want to use them     
+if (sum("sample_group_color" %in% names(dfDesign)) > 0){
+    groupCols <- tibble::deframe(unique(dfDesign[,c("sample_group", "sample_group_color")]))
+
+}
+groupCols <- tibble::deframe(unique(dfDesign[,c("sample_group", "sample_group_color")]))
+
+
+ha = HeatmapAnnotation(
+            df = dfAnno,
+            col = list(
+              timepoint = col_fun,
+              sample_group = groupCols
+            )
+)    
+        
+#ha = HeatmapAnnotation(df = df2, col = list(Group = GroupVec))
+    
+ht_opt(
+    legend_border = "black",
+    heatmap_border = TRUE,
+    annotation_border = TRUE
+)
+
+HM1 = Heatmap(
+    mHM,
+    column_title = "Example Heatmap Most Variable Genes (Columns Clustered)",
+    name = "Rel Expr", 
+    #row_km = 5,
+    col = f1,
+   
+    show_column_names = TRUE,
+    show_row_names = showRowNames,
+    border = TRUE,
+    cluster_columns = TRUE,
+    cluster_rows = TRUE,
+    
+    #Dendrogram configurations: columns
+    clustering_distance_columns="euclidean",
+    clustering_method_columns="complete",
+    column_dend_height=unit(10,"mm"),
+    
+    #Dendrogram configurations: rows
+    clustering_distance_rows="euclidean",
+    clustering_method_rows="complete",
+    row_dend_width=unit(10,"mm"),
+    top_annotation = ha,
+    show_heatmap_legend = TRUE,
+    #row_title = NULL,
+    #show_row_dend = FALSE,
+    row_names_gp = gpar(fontsize = 5)
+) 
+        
+ht_opt(RESET = TRUE)
+
+## To view the resulting heatmap do 
+print(HM1)
+
+## To save the heatmap in a file in your current working directory do
+pdf("example.heatmap.1.pdf")
+    print(HM1)
+dev.off()
+
+
+
+
+```
+
+### Create Custom-ordered Heatmap
+Now what if we wanted the columns not to be clustered, but ordered by sample group?
+In this case we will provide the mHM data matrix in the order we want it to appear and we will edit the annotation file dfAnno accordingly. 
+```{r generate_heatmap_co, echo=TRUE, eval=TRUE, warning=FALSE, results="asis"}
+## Lets start with the Annotation file and order the sample here accoring to genotype and timepoint
+selVec <- c("sample_id","sample_group", "dataseries")
+
+if (exists("designTScol")){
+    if (sum(designTScol %in% names(dfDesign)) > 0){
+        selVec <- unique(c(selVec, designTScol))
+    }
+} 
+
+dfAnno <- unique(dfDesign[,selVec])
+
+if (exists("designTScol")){
+    if (sum(designTScol %in% names(dfDesign)) > 0){
+        ## Now let's make sure that the timepoint entries are numeric
+dfAnno[,designTScol] <- as.numeric(dfAnno[,designTScol])
+    }
+}
+
+###############################################################################
+## Now let's do the ordering here
+
+dfAnno <- dfAnno[order(dfAnno[,designTScol], rev(dfAnno[,"sample_group"])),]
+
+##
+###############################################################################
+
+
+## Next we re-order the mHM matrix according to the above order:
+# State of mHM before:
+colnames(mHM)
+
+mHm <- mHM[,dfAnno$sample_id]
+
+# Let's check mHM afer colun reordering:
+colnames(mHM)
+
+## Now we will make the sample_id into rownames for dfAnno
+row.names(dfAnno) <- dfAnno$sample_id
+dfAnno$sample_id <- NULL
+
+## Let's examine the result
+DT::datatable(dfAnno)
+
+## As we have ordered the mHM matrix according to the dfAnno order, both elements are in sync and we can now make the heatmap as before - with one modification: we will set the cluster_columns variable to FALSE
+
+## Now let's create the color schemes for some displays:
+        
+## Add timepoint barchart color coded by intensity
+col_fun = circlize::colorRamp2(c(floor(min(as.numeric(dfAnno[,designTScol]))),  ceiling(max(as.numeric(dfAnno[,designTScol])))), c("lightgrey", "black"))
+  
+# If we have sample group colors specified in the design file, we want to use them     
+if (sum("sample_group_color" %in% names(dfDesign)) > 0){
+    groupCols <- tibble::deframe(unique(dfDesign[,c("sample_group", "sample_group_color")]))
+
+}
+groupCols <- tibble::deframe(unique(dfDesign[,c("sample_group", "sample_group_color")]))
+
+
+ha = HeatmapAnnotation(
+            df = dfAnno,
+            col = list(
+              timepoint = col_fun,
+              sample_group = groupCols
+            )
+)    
+        
+#ha = HeatmapAnnotation(df = df2, col = list(Group = GroupVec))
+    
+ht_opt(
+    legend_border = "black",
+    heatmap_border = TRUE,
+    annotation_border = TRUE
+)
+
+HM2 = Heatmap(
+    mHM,
+    column_title = "Example Heatmap Most Variable Genes (Columns Ordered)",
+    name = "Rel Expr", 
+    #row_km = 5,
+    col = f1,
+   
+    show_column_names = TRUE,
+    show_row_names = showRowNames,
+    border = TRUE,
+    cluster_columns = FALSE,
+    cluster_rows = TRUE,
+    
+    #Dendrogram configurations: columns
+    clustering_distance_columns="euclidean",
+    clustering_method_columns="complete",
+    column_dend_height=unit(10,"mm"),
+    
+    #Dendrogram configurations: rows
+    clustering_distance_rows="euclidean",
+    clustering_method_rows="complete",
+    row_dend_width=unit(10,"mm"),
+    top_annotation = ha,
+    show_heatmap_legend = TRUE,
+    #row_title = NULL,
+    #show_row_dend = FALSE,
+    row_names_gp = gpar(fontsize = 5)
+) 
+        
+ht_opt(RESET = TRUE)
+
+## To view the resulting heatmap do 
+print(HM2)
+
+## To save the heatmap in a file in your current working directory do
+pdf("example.heatmap.2.pdf")
+    print(HM1)
+dev.off()
+
+
+```
+
+
+
+## Documentation
+```{r documentation, eval=TRUE, echo=F, results=T}
+sessionInfo()
+
+if (!is.null(Obio@documentationParams)){
+    projectParams <- Obio@documentationParams
+} else {
+    projectParams <- list(
+        "title" = "LearnR Functionality",
+        "subtitle" = "Practice some R on your data"
+        
+    )
+}
+```
+
+
+---
+title: "`r projectParams$title`"
+subtitle:  "`r projectParams$subtitle`"
+author:
+    - Bioinformatics: Stefan Boeing^[The Francis Crick Institute, stefan.boeing@crick.ac.uk]
+date: 'Compiled: `r format(Sys.Date(), "%B %d, %Y")`'
+
+
+output: 
+    html_document:
+        code_folding: hide
+        df_print: tibble
+        toc: true
+        toc_depth: 5
+        toc_float: true
+        css: /camp/stp/babs/working/boeings/Stefan/protocol_files/github/boeings/templates/style/style.css
+
+always_allow_html: yes
+---

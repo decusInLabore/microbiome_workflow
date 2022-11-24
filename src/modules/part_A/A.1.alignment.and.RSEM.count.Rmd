@@ -1,0 +1,520 @@
+<!-- Set Parameters Module -->
+<!-- Set the chnkPrefix to make all chunks unique in the overall folder -->
+```{r, echo=TRUE, eval=TRUE, warning=FALSE}
+chnkPrefix <- "alignment.and.RSEM."
+VersionPdfExt <- VersionPdfExt <- paste0(".",chnkPrefix,"V", gsub("-", "", Sys.Date()), ".pdf")
+
+```
+
+## Alignment, QC, RSEM
+### Alignment
+```{r, echo=TRUE, eval=TRUE, warning=FALSE, results="asis"}
+###############################################################################
+## Organizing FASTQ files                                                    ##
+baseMount <- gsub(
+    "boeings/",
+    "",
+    hpc.mount
+)
+
+
+
+returnList <- biologicSeqTools2::organizeFastqFiles(
+    baseMount = "",
+    pathToSeqStorageFolder = Obio@parameterList$pathToSeqStorageFolder,
+    fastqOutputDir = Obio@parameterList$fastqDir,
+    localWorkDir = Obio@parameterList$localWorkDir,
+    checkFileExists = FALSE
+)
+
+
+shellscriptVec <- returnList$shellscriptVec
+concatenationRequired <- returnList$concatenationRequired
+
+Obio <- add2vec(
+     obj = Obio,
+     slot_name = "scriptVec",
+     value = shellscriptVec
+)
+#
+# ## Done organizing FASTQ files                                               ##
+# ###############################################################################
+#
+#
+#
+# ###############################################################################
+# ## Assemble design file                                                      ##
+#
+if (concatenationRequired){
+    print("Concatenation script executed?")
+    pathToSeqStorageFolder <- Obio@parameterList$fastqDir
+} else {
+    pathToSeqStorageFolder <- Obio@parameterList$pathToSeqStorageFolder
+}
+
+
+#################################################################################
+## If concatenation required, generate new input files                         ##
+setwd(Obio@parameterList$localWorkDir)
+if (concatenationRequired){
+    system("concatFASTQfiles.sh ")
+}
+
+## Temporary fix
+setwd(paste0(Obio@parameterList$localWorkDir, "bulkRNAseq_workflow"))
+## end
+
+## Done                                                                        ##
+#################################################################################
+
+# ###############################################################################
+# ## Create Design File                                                        ##
+#
+## this setup requires a file named sample.ids.txt in workir with two columns:
+# sampleID (with the ASF id) and 
+# sample.id with the experimental sample name. 
+
+dfDesign <- biologicSeqTools2::createDesignFileCrickASFsamples(
+    pathToSeqStorageFolder = pathToSeqStorageFolder,
+    FNsampleAnnotation = Obio@parameterList$baseDesignFN,
+    paired.end = Obio@parameterList$paired.end,
+    baseMount = "",
+    fastqDir = Obio@parameterList$localFastqDir
+
+)
+
+# dfDesign <- dfDesign[order(dfDesign$timepoint, decreasing = F),]
+
+# dfDesign <- read.delim(
+#     "/camp/stp/babs/working/boeings/Projects/pachnisv/song.chng/195A_RNAseq_enteric_neurons_DIV_timecourse/workdir/vpl195A.design.file.txt",
+#     sep = "\t",
+#     stringsAsFactors = F
+# )
+# 
+# dfDesign <- dfDesign[dfDesign$sample.id != "SHC_DIV20_4",]
+
+## In this project - remove all non-neuron samples
+#dfDesign[["LRT_Genotype"]] <- dfDesign$sample.group
+#dfDesign[["LRT_Trp53_WT_HET_NULL"]] <- dfDesign$sample.group
+#dfDesign$LRT_Trp53_WT_HET_NULL <- gsub("S_Pole4NULL", "", dfDesign$LRT_Trp53_WT_HET_NULL)
+#dfDesign$LRT_Trp53_WT_HET_NULL <- gsub("S_Pole4WT", "", dfDesign$LRT_Trp53_WT_HET_NULL)
+
+
+
+#
+# ## Add DGE comparisons ##
+# unique(dfDesign$sample.group)
+#
+# ## Add DGE comparisons ##
+# unique(dfDesign$sample.group)
+
+#"TCRaKO_ColNonNeuron" 
+#"TCRaKO_ColNeuron"    
+#"WT_ColNeuron"
+#"WT_ColNonNeuron"
+
+
+# dfDesign <- addDGEcomparisons2DesignFile(
+#   dfDesign = dfDesign,
+#   comparisonList = list(
+#     "comp_1" = c("DIV11", "DIV4"),
+#     "comp_2" = c("DIV20", "DIV4"),
+#     "comp_3" = c("DIV20", "DIV11"),
+#     "comp_4" = c("DIV4", "DIV0C"),
+#     "comp_5" = c("DIV11", "DIV0C"),
+#     "comp_6" = c("DIV20", "DIV0C")
+#   )
+# )
+
+names(dfDesign) <- gsub("DGE_", "comp_", names(dfDesign))
+
+#dfDesign[["LRT_timepoint"]] <- dfDesign$timepoint
+
+dfDesign$dataseries_color <- NULL
+
+dsVec <- unique(dfDesign$dataseries)
+dsCol <- rainbow(length(dsVec))
+
+if (length(dsCol) == 2){
+    dsCol <- c("#FF0000", "#00FF00")
+}
+
+dfCol <- data.frame(dataseries_color = dsCol, dataseries = dsVec)
+
+dfDesign <- merge(
+    dfDesign,
+    dfCol,
+    by.x = "dataseries",
+    by.y = "dataseries"
+)
+
+#dfDesign[["dataseries_color"]] <- "#009900"
+#dfDesign[dfDesign$dataseries == "CTRL", "dataseries_color"] <- "#009900"
+#dfDesign[["ts_color"]] <- dfDesign$dataseries_color
+
+#
+#Obio@dfDesign <- dfDesign
+#
+dfDesign[["f_replicate"]] <- sapply(
+    dfDesign$sample.id,
+    function(x) unlist(strsplit(x, "_"))[3]
+)
+
+#Obio@dfDesign[["f_timepoint"]] <- paste0("T", Obio@dfDesign$timepoint)
+
+
+
+dfDesign[["FASTQ"]] <- dfDesign$sample.id
+
+
+###############################################################################
+## Add sample group colors                                                   ##
+
+## Get relevant colors ##
+
+sample.group <- unique(Obio@dfDesign$sample.group)
+sample.group_color <- sample.group
+
+
+library(scales)
+sample.group_color = hue_pal()(length(sample.group_color))
+#sample.group_color = c("#990000", "#009900")
+
+dfGroupColors <- unique(data.frame(sample.group, sample.group_color))
+
+Obio@dfDesign <- merge(Obio@dfDesign, dfGroupColors, by.x = "sample.group", "sample.group")
+
+#setwd(Obio@parameterList$localWorkDir)
+#design.file <- paste0("design/design.file.txt")
+Obio@projectDetailList$designFN <- paste0(pipelineList[["folder"]], "bulkRNAseq_workflow/design/experimental.design.file.txt")
+
+write.table(Obio@dfDesign , Obio@projectDetailList$designFN, row.names = FALSE, sep = "\t")
+
+## 
+###############################################################################
+
+###############################################################################
+## Create Formula Matrix                                                     ##
+
+comparisonID <- names(dfDesign)[grep("comp_", names(dfDesign))]
+comparison <- rep("", length(comparisonID))
+for (i in 1:length(comparisonID)){
+  contrasts = sort(as.vector(unique(dfDesign[,comparisonID[i]])), decreasing = FALSE)
+  contrasts = contrasts[contrasts != ""]
+  
+  contrasts <- gsub("^1_", "", contrasts)
+  contrasts <- gsub("^2_", "", contrasts)
+  
+  #Create contrast vector
+  #contrast.vector = c([condition],[1_diff.gene set, e.g. mt],[2_baseline, e.g. wt])
+  #if (contrasts[2] != "scr"){
+  #  contrasts = rev(contrasts)
+  #}
+  sel.col = contrasts
+  
+  contrast.vector = append("condition", contrasts)
+  colName = paste(contrasts, collapse = "_vs_")
+  comparison[i] <- colName
+}
+
+test <- rep("Wald", length(comparison))
+type <- rep("DGE", length(comparison))
+
+#model <- rep("~ condition", length(comparison))
+model <- c(
+    "~ condition",
+    "~ condition",
+    "~ condition",
+    "~ condition",
+    "~ condition",
+    "~ condition",
+    "~ condition",
+    "~ condition",
+    "~ condition",
+    "~ condition",
+    "~ condition",
+    "~ condition",
+    "~ condition + f_timepoint + condition:f_timepoint",
+    "~ condition + f_timepoint + condition:f_timepoint",
+    "~ condition + f_timepoint + condition:f_timepoint",
+    "~ condition + f_timepoint + condition:f_timepoint"
+)
+reducedModel <- rep("", length(comparison))
+normalizeAllSamplesTogether <- rep(FALSE, length(comparison))
+# betaPrior <- rep(Obio@parameterList$DEseq2betaPrior, length(comparison))
+betaPrior <- c(
+    TRUE,
+    TRUE,
+    TRUE,
+    TRUE,
+    TRUE,
+    TRUE,
+    TRUE,
+    TRUE,
+    TRUE,
+    TRUE,
+    TRUE,
+    TRUE,
+    FALSE,
+    FALSE,
+    FALSE,
+    FALSE
+)
+
+dfModel <- data.frame(
+  comparison,
+  comparisonID,
+  test,
+  type,
+  model,
+  reducedModel,
+  normalizeAllSamplesTogether,
+  betaPrior, stringsAsFactors = TRUE
+)
+
+# comparisonID <- c(
+#     "LRT_genotype",
+#     "LRT_Naive_Infected",
+#     "LRT_Ly6Hi_Low",
+#     "LRT_cGCSF",
+#     "LRT_WtNaHi_WTinfLo_WTclGcLo",
+#     "LRT_WtNaHi_WTinfLo_TinfHi"
+# )
+# 
+comparisonID <- names(dfDesign)[grep("LRT_", names(dfDesign))]
+comparison <- names(dfDesign)[grep("LRT_", names(dfDesign))]
+test <- rep("LRT", length(comparison))
+type <- rep("LRT", length(comparison))
+model <- c(
+  "~ f_timepoint",
+  "~ condition"
+)
+# 
+# 
+reducedModel <- c(
+  "~ 1",
+  "~ 1"
+)
+# 
+normalizeAllSamplesTogether <- rep(FALSE, length(comparison))
+betaPrior <- rep("", length(comparison))
+
+dfMLRT <- data.frame(
+  comparison,
+  comparisonID,
+  test,
+  type,
+  model,
+  reducedModel,
+  normalizeAllSamplesTogether,
+  betaPrior,
+  stringsAsFactors = FALSE
+)
+
+dfModel <- rbind(
+  dfModel,
+  dfMLRT
+)
+
+Obio@dfModel <- dfModel
+
+
+#model.file <- paste0("design/dge.model.file.txt")
+model.file <- "design/dge.model.table.txt"
+
+write.table(Obio@dfModel , model.file, row.names = FALSE, sep = "\t")
+
+Obio@projectDetailList$modelFN <- model.file
+
+
+## Done adding sample group colors                                           ##
+###############################################################################
+
+##                                                                           ##
+###############################################################################
+## End Opton B                                                               ##
+###############################################################################
+###############################################################################
+
+###############################################################################
+## Create analysis scripts                                                   ##
+sDir <- getwd()
+setwd(Obio@parameterList$localWorkDir)
+
+Obio <- biologicSeqTools2::createbulkRNASeqAnalysisBashScripts(
+    obj = Obio,
+    scriptVecSlot = "scriptVec"
+)
+setwd(sDir)
+
+## Run analysis BASH script ##
+## Done creating analysis bash scripts                                       ##
+###############################################################################
+
+
+###############################################################################
+## Create template for execution files                                       ##
+
+docVec <- as.vector(NULL, mode="character")
+
+docVec <- c(
+  docVec, 
+  "###############################################################################",
+  "## Step 1 Create annotaiton in sample.ids.txt                                ##",
+  "## sampple.ids.txt needs to have the columns sampleID and sample.id. It may contain columns starting with LRT_",
+  "## Run part A ##",  
+  paste0("Rscript ",Obio@parameterList$localWorkDir,"bulkRNA_seq/bulkRNAseq_partA_Ini.r"),
+  "## Download SRA ##",
+  "#sh /camp/stp/babs/working/boeings/Projects/niakank/rebecca.lea/407_knl_rl_bulkRNAseq_ES_naive_primed_GSE93241/workdir/SRP096187.srr.download.instructions.sh",
+  "",
+  "## Concat SRA ##",
+  "#sh /camp/stp/babs/working/boeings/Projects/niakank/rebecca.lea/407_knl_rl_bulkRNAseq_ES_naive_primed_GSE93241/workdir/concatFASTQfiles.sh",
+  ## Run alignment ##
+  paste0("sh ",Obio@parameterList$localWorkDir, Obio@parameterList$project_id, ".documentationShell.script.sh"),
+  "## Do DGE ##",
+  paste0("sh ",Obio@parameterList$localWorkDir, "bulkRNA_seq/runB.sh "),
+  "## Run GSEA",
+  paste0("sh ",Obio@parameterList$localWorkDir, "/GSEA/GSEAcommands.sh"),
+  "## Run B2",
+  paste0("sh ",Obio@parameterList$localWorkDir, "bulkRNA_seq/runB2.sh"),
+  "## Create plot collection ",
+  paste0("sh ",Obio@parameterList$localWorkDir, "GSEA/GSEAmasterscript.sh"),
+  "## Make ",
+  paste0("mkdir -p /camp/stp/babs/www/boeings/bioLOGIC_external/data/",Obio@parameterList$project_id,"/html"),
+  "## Transfer multiqc to server package",
+  paste0("cp ",Obio@parameterList$localWorkDir,"RSEM/Ensembl/multiqc_report.html /camp/stp/babs/www/boeings/bioLOGIC_external/data/",Obio@parameterList$project_id,"/html/QC.html"),
+  paste0("cp -r ",Obio@parameterList$localWorkDir,"GSEA/enrichment_plots /camp/stp/babs/www/boeings/bioLOGIC_external/data/",Obio@parameterList$project_id,"/"),
+  "## Run partC",
+  paste0("sh ",Obio@parameterList$localWorkDir,"bulkRNA_seq/runC.sh"),
+  "## Copy onto server",
+  paste0("cp -r ",Obio@parameterList$localWorkDir,"bulkRNAseq_partC_Analysis.html /camp/stp/babs/www/boeings/bioLOGIC_external/data/",Obio@parameterList$project_id,"/html/Analysis_V1.html"),
+  paste0("cp -r ",Obio@parameterList$localWorkDir,"bulkRNAseq_plugin_correlationAnalysis.html /camp/stp/babs/www/boeings/bioLOGIC_external/data/",Obio@parameterList$project_id,"/html/TS_Correlation_Analysis.html"),
+  paste0("cp -r ",Obio@parameterList$localWorkDir, Obio@parameterList$project_id, "/report_figures /camp/stp/babs/www/boeings/bioLOGIC_external/data/", Obio@parameterList$project_id, "/html/"),
+  paste0("cp -r ",Obio@parameterList$outputDir, " /camp/stp/babs/www/boeings/bioLOGIC_external/data/", Obio@parameterList$project_id, "/html/"),
+  paste0("cp -r ",Obio@parameterList$localWorkDir, "bulkRNA_seq/",Obio@parameterList$project_id,"_GSEA.xlsx /camp/stp/babs/www/boeings/bioLOGIC_external/data/", Obio@parameterList$project_id, "/html/outputs"),
+  "## Done                                                                      ##",
+  "###############################################################################"
+)
+  
+FN <- paste0(Obio@parameterList$localWorkDir, "process.command.txt")
+sink(FN)
+for (i in 1:length(docVec)){
+  cat(docVec[i]);cat("\n");
+}
+sink()
+
+
+
+
+# mkdir /camp/stp/babs/www/boeings/bioLOGIC_external/data/knl279A/
+#   mkdir /camp/stp/babs/www/boeings/bioLOGIC_external/data/knl279A/outputs
+# mkdir /camp/stp/babs/www/boeings/bioLOGIC_external/data/knl279A/html
+# mkdir /camp/stp/babs/www/boeings/bioLOGIC_external/data/knl279A/html/outputs
+# 
+# Rscript /camp/stp/babs/working/boeings/Projects/niakank/claudia.gerri/279A_KN_CG_scRNAseq_GSE36552_human_embryo_pluripotency/workdir/bulkRNA_seq/bulkRNAseq_partA_Ini.r
+# 
+# project=rB
+# sh /camp/stp/babs/working/boeings/Projects/niakank/claudia.gerri/279A_KN_CG_scRNAseq_GSE36552_human_embryo_pluripotency/workdir/bulkRNA_seq/runB.sh
+# wait_for_cluster
+# 
+# 
+# ## Once GSEA is finished ##
+# project=GSEA
+# sh /camp/stp/babs/working/boeings/Projects/niakank/claudia.gerri/279A_KN_CG_scRNAseq_GSE36552_human_embryo_pluripotency/workdir/GSEA/GSEAmasterscript.sh
+# cp -r /camp/stp/babs/working/boeings/Projects/niakank/claudia.gerri/279A_KN_CG_scRNAseq_GSE36552_human_embryo_pluripotency/workdir/GSEA/enrichment_plots /camp/stp/babs/www/boeings/bioLOGIC_external/data/knl279A/outputs
+# sh /camp/stp/babs/working/boeings/Projects/niakank/claudia.gerri/279A_KN_CG_scRNAseq_GSE36552_human_embryo_pluripotency/workdir/bulkRNA_seq/runB2.sh
+# wait_for_cluster
+# 
+# 
+# project=rB2
+# sh /camp/stp/babs/working/boeings/Projects/niakank/claudia.gerri/279A_KN_CG_scRNAseq_GSE36552_human_embryo_pluripotency/workdir/bulkRNA_seq/runB2.sh
+# wait_for_cluster
+# 
+# ## Re-organise GSEA ##
+# sh /camp/stp/babs/working/boeings/Projects/niakank/claudia.gerri/279A_KN_CG_scRNAseq_GSE36552_human_embryo_pluripotency/workdir/GSEA/GSEAmasterscript.sh
+# cp -r /camp/stp/babs/working/boeings/Projects/niakank/claudia.gerri/279A_KN_CG_scRNAseq_GSE36552_human_embryo_pluripotency/workdir/GSEA/enrichment_plots /camp/stp/babs/www/boeings/bioLOGIC_external/data/sll378/outputs
+# 
+# 
+# 
+# 
+# 
+# ## Transfering bulk-RNA Seq project to server
+# mkdir /camp/stp/babs/www/boeings/bioLOGIC_external/data/rtl293/
+#   mkdir /camp/stp/babs/www/boeings/bioLOGIC_external/data/rtl293/html
+# mkdir /camp/stp/babs/www/boeings/bioLOGIC_external/data/rtl293/html/outputs
+# 
+# cp -r /camp/stp/babs/working/boeings/Projects/niakank/claudia.gerri/279A_KN_CG_scRNAseq_GSE36552_human_embryo_pluripotency/workdir/GSEA/enrichment_plots /camp/stp/babs/www/boeings/bioLOGIC_external/data/knl279A
+# mv /camp/stp/babs/working/boeings/Projects/niakank/claudia.gerri/279A_KN_CG_scRNAseq_GSE36552_human_embryo_pluripotency/workdir/GSEA/enrichment_plots /camp/stp/babs/www/boeings/bioLOGIC_external/data/knl279A/workdir/bulkRNA_seq/rtl293_GSEA.xlsx /camp/stp/babs/working/boeings/Projects/niakank/claudia.gerri/279A_KN_CG_scRNAseq_GSE36552_human_embryo_pluripotency/workdir/GSEA/enrichment_plots /camp/stp/babs/www/boeings/bioLOGIC_external/data/knl279A/workdir
+# cp -r /camp/stp/babs/working/boeings/Projects/treismanr/sofie.eriksson/293_RTL_SE_bulkRNASeq_srf_wt_mt_RN18268/workdir/rtl293_GSEA.xlsx /camp/stp/babs/www/boeings/bioLOGIC_external/data/rtl293/html/outputs
+# 
+# 
+# mv /camp/stp/babs/working/boeings/Projects/treismanr/sofie.eriksson/293_RTL_SE_bulkRNASeq_srf_wt_mt_RN18268/workdir/bulkRNA_seq/template.bulkRNAseq.partC.Analysis.html /camp/stp/babs/working/boeings/Projects/treismanr/sofie.eriksson/293_RTL_SE_bulkRNASeq_srf_wt_mt_RN18268/workdir/Analysis_V2.html
+# cp -r /camp/stp/babs/working/boeings/Projects/treismanr/sofie.eriksson/293_RTL_SE_bulkRNASeq_srf_wt_mt_RN18268/workdir/Analysis_V2.html /camp/stp/babs/www/boeings/bioLOGIC_external/data/rtl293/html
+# 
+# cp -r /camp/stp/babs/working/boeings/Projects/treismanr/sofie.eriksson/293_RTL_SE_bulkRNASeq_srf_wt_mt_RN18268/workdir/rtl293/report_figures /camp/stp/babs/www/boeings/bioLOGIC_external/data/rtl293/html
+# 
+# cp -r /camp/stp/babs/working/boeings/Projects/treismanr/sofie.eriksson/293_RTL_SE_bulkRNASeq_srf_wt_mt_RN18268/workdir/RSEM/Ensembl/multiqc_report.html QC.html
+# 
+#   "
+#   
+#   
+#   
+# )
+
+
+
+
+
+
+
+
+
+
+
+## Done                                                                      ##
+###############################################################################
+
+###############################################################################
+##                                                                           ##
+
+if (!is.null(Obio@projectDetailList$countDataFN) && file.exists(Obio@projectDetailList$countDataFN)){
+    Obio@parameterList$RSEMcountDataFile <- Obio@projectDetailList$countDataFN
+} else {
+    Obio@parameterList$RSEMcountDataFile <- paste0(
+        Obio@parameterList$localWorkDir,
+        "RSEM/",
+        Obio@projectDetailList$project_id,
+        ".count.data.txt"
+    )
+}
+
+## Update RSEM path ##
+
+
+
+##                                                                           ##
+###############################################################################
+
+###############################################################################
+## Save Obio Object                                                          ##
+
+
+save(Obio,
+     file = paste0(
+         Obio@parameterList$localWorkDir,
+         Obio@parameterList$project_id,
+         ".bioLOGIC.Robj"
+     )
+)
+
+print("R bioLOGIC single cell object initialized.")
+
+##                                                                           ##
+###############################################################################
+
+###############################################################################
+## Run alignment shell scripts                                               ##
+
+
+```
+

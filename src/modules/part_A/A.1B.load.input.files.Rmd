@@ -1,0 +1,222 @@
+<!-- Set PArameters Module -->
+<!-- Set the chnkPrefix to make all chunks unique in the overall folder -->
+```{r, echo=TRUE, eval=TRUE, warning=FALSE}
+chnkPrefix <- "load.files."
+VersionPdfExt <- VersionPdfExt <- paste0(".",chnkPrefix,"V", gsub("-", "", Sys.Date()), ".pdf")
+
+```
+
+## Data Preparation
+### Load Design File
+```{r, echo=TRUE, eval=TRUE, warning=FALSE, results="asis"}
+###############################################################################
+## Load design file                                                          ##
+
+FNdesign <- Obio@projectDetailList$designFN
+
+if (!is.null(FNdesign) & file.exists(FNdesign)){
+    dfDesign <- read.delim(
+        FNdesign, 
+        sep = "\t",
+        stringsAsFactors = F
+    )    
+} else {
+    stop("No design file specified")
+}
+
+
+Obio@dfDesign <- dfDesign
+
+##                                                                           ##
+###############################################################################
+
+###############################################################################
+## contrast files                                                            ##
+###############################################################################
+## (2) Contrast File                                                         ##
+
+if (is.null(Obio@projectDetailList$primaryAlignmentGeneID)){
+    primaryAlignmentGeneID <-Obio@parameterList$primaryAlignmentGeneID
+} else {
+    primaryAlignmentGeneID <- Obio@projectDetailList$primaryAlignmentGeneID
+}
+
+
+if (!is.null(Obio@projectDetailList$DESeq2_result_folder)){
+    DEseq2resultDir <- Obio@projectDetailList$DESeq2_folder
+    allfiles <- paste0(DEseq2resultDir, "/", list.files(DEseq2resultDir))
+    allfiles <- allfiles[grep(".txt", allfiles)]
+    contrastNames <- gsub(paste0(DEseq2resultDir, "/"), "", allfiles)
+    contrastNames <- gsub(".txt", "", contrastNames)
+
+
+
+
+
+    ###############################################################################
+    ## For this project only: Add ENSMUSG column                                 ##
+    dfAnno <- Obio@dfGeneAnnotation
+    dfAnno <- unique(
+      Obio@dfGeneAnnotation[,c(primaryAlignmentGeneID, Obio@parameterList$geneIDcolumn)]
+    )
+    
+    ## Done adding ENSMUSG column                                                ##
+    ###############################################################################
+    for (i in 1:length(allfiles)){
+      colName <- contrastNames[i]
+      res <- read.delim(allfiles[i], header = T, sep="\t")
+      
+      ################################
+      ## This project only 
+      dfAdd <- unique(dfAnno[dfAnno[,Obio@parameterList$geneIDcolumn] %in% res$symbol,  ])
+      res <- merge(
+          res,
+          dfAdd,
+          by.x = "symbol",
+          by.y = Obio@parameterList$geneIDcolumn
+      )
+      
+      
+      selVec <- c("X", "baseMean", "log2FoldChange", "lfcSE", "stat", "pvalue", "padj")
+      res <- unique(res[,selVec])
+      names(res) <- gsub("^X$", primaryAlignmentGeneID, names(res))
+      
+      res <- res[!(duplicated(res[,primaryAlignmentGeneID])),]
+      res[is.na(res)] <- 0
+      ## Done 
+      ################################
+      
+      
+      row.names(res) <- res[,primaryAlignmentGeneID]
+      
+      names(res) = paste(names(res), colName, sep="_")
+      res[[primaryAlignmentGeneID]] = rownames(res)
+      
+      
+      names(res) = gsub("log2FoldChange", "logFC", names(res))
+      names(res) = gsub(
+        "logFC",
+        paste("contrast_", i, "_logFC", sep=""),
+        names(res)
+      )
+      
+      names(res) = gsub(
+        "padj",
+        paste("contrast_", i, "_padj", sep=""),
+        names(res)
+      )
+      
+      names(res) = gsub(
+        "stat",
+        paste("contrast_", i, "_stat", sep=""),
+        names(res)
+      )
+      
+      res$baseMean <- log2(res$baseMean)
+      names(res) = gsub(
+        "baseMean",
+        paste("contrast_", i, "_lg2BaseMean", sep=""),
+        names(res)
+      )
+      
+      #Remove all rows without a padj
+      padj.col = grep("padj", names(res))[1]
+      res[,padj.col][is.na(res[,padj.col])] = ""
+      res = res[res[,padj.col] != "", ]
+      res[,padj.col] <- as.numeric(res[,padj.col])
+      
+      ## Add log10p column ##
+      padj  <- names(res)[grep("_padj_", names(res))]
+      lg10p <- gsub("padj", "lg10p", padj)
+      
+      for (z in 1:length(padj)){
+        preprocess <- as.numeric(res[,padj[z]])
+        minNum <- min(preprocess[preprocess != 0])
+        preprocess[preprocess == 0] <- minNum
+        
+        # if (length(grep("padj_LRT", padj[i])) > 0){
+        #     preprocess <- as.numeric(res[,padj[z]])
+        #     minNum <- min(preprocess[preprocess != 0])
+        #     preprocess[preprocess == 0] <- minNum
+        # } else {
+        #     preprocess <- as.numeric(res[,padj[z]])
+        # }
+        
+        temp <- -1*log10(preprocess)
+        #temp[temp >= 50] = 50
+        res[,lg10p[z]] <- temp
+      }
+      
+      col.vector = c(
+        primaryAlignmentGeneID,
+        names(res)[grep("contrast", names(res))]
+      )
+      
+      res = res[,col.vector]
+      
+      ## Make all numeric columns numeric ##
+      res[,grep("contrast_", names(res))] <- apply(res[,grep("contrast_", names(res))], 2, as.numeric)
+      
+      if (i == 1){
+        dfContrastTable <- res
+      } else {
+        dfContrastTable <- merge(
+          dfContrastTable,
+          res,
+          by.x = primaryAlignmentGeneID,
+          by.y = primaryAlignmentGeneID,
+          all = TRUE
+        )
+        dfContrastTable[is.na(dfContrastTable)] <- 0
+      }
+    }
+    
+    
+    # head(dfContrastTable)
+    
+    dfContrastTable<- dfContrastTable[rowSums(dfContrastTable[,2:ncol(dfContrastTable)]) != 0, ]
+    
+    
+    
+    Obio@DEseq2contrastTable <- dfContrastTable
+}
+
+##                                                                           ##
+###############################################################################
+
+###############################################################################
+## Load TPM/count file                                                       ##
+
+FNcount <- Obio@projectDetailList$countTableFN
+
+if (file.exists(FNcount)){
+    dfTPM <- read.delim(
+        FNcount, 
+        sep = "\t",
+        stringsAsFactors = F
+    )    
+} else {
+    stop("No design file specified")
+}
+
+
+dfTPM <- dfTPM[rowSums(dfTPM[,2:ncol(dfTPM)]) != 0,]
+
+head(dfTPM)
+# 
+Obio@dfTPM <- dfTPM
+
+
+designSampleIDs <- unique(Obio@dfDesign$sample.id)
+dfTPMSampleIDs <- unique(names(Obio@dfTPM))
+check <- !(designSampleIDs %in% dfTPMSampleIDs)
+
+if (sum(check) > 0){
+  stop("Sample IDs in dfDesign don't match the column names in the count file")
+}
+
+##                                                                           ##
+###############################################################################
+
+```
+

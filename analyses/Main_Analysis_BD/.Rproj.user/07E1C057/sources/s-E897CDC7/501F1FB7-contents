@@ -1,0 +1,141 @@
+<!-- Set Parameters Module -->
+<!-- Set the chnkPrefix to make all chunks unique in the overall folder -->
+```{r set_parameters_init, echo=TRUE, eval=TRUE, warning=FALSE}
+chnkPrefix <- "partB.set.parameters."
+VersionPdfExt <- VersionPdfExt <- paste0(".",chnkPrefix,"V", gsub("-", "", Sys.Date()), ".pdf")
+
+```
+
+## Data Preparation
+### Set Parameters
+```{r B_set_directories, echo=TRUE, eval=TRUE, warning=FALSE, results="asis"}
+###############################################################################
+##                                                                           ##
+
+if (dir.exists("/Volumes/babs/working/boeings/")){
+    hpc.mount <- "/Volumes/babs/working/boeings/"
+} else if (dir.exists("Y:/working/boeings/")){
+    hpc.mount <- "Y:/working/boeings/"
+} else if (dir.exists("/camp/stp/babs/working/boeings/")){
+    hpc.mount <- "/camp/stp/babs/working/boeings/"
+} else {
+    hpc.mount <- ""
+}
+
+
+
+## Loading the BABS password ##
+if (upload.results.to.database){
+    FN <- paste0(hpc.mount, "Projects/reference_data/pwd_folder/babs.txt")
+    dbTable <- read.delim(
+      FN,
+      header = F,
+      sep = "\t",
+      stringsAsFactors = F
+    )
+}
+db.pwd <- as.vector(dbTable[1,1])
+
+##                                                                           ##
+###############################################################################
+
+###############################################################################
+## Load Obio object from step A                                              ##
+ObioFN <- paste0(
+    tempWorkDir, "/", 
+    list.files(tempWorkDir)[grep(".bioLOGIC.Robj", list.files(tempWorkDir))]
+)
+
+load(ObioFN)
+
+## Activate debug mode on subset of cells < 1
+# Obio@parameterList$debugReduce <- 1
+
+## Set project specific parameters ##
+Obio <- setMountingPoint(Obio)
+Obio <- setAnalysisPaths(Obio)
+Obio <- setCrickGenomeAndGeneNameTable(Obio)
+Obio <- createAnalysisFolders(
+    Obio
+)
+Obio <- setDataBaseParameters(Obio)
+Obio <- addGeneAnnotation(Obio)
+
+## Create Sample List ##
+if (Obio@parameterList$hpcMount != "/camp/stp/babs/working/boeings/"){
+    for (i in 1:length(Obio@sampleDetailList)){
+        Obio@sampleDetailList[[i]]$path <- gsub("/camp/stp/babs/working/boeings/",Obio@parameterList$hpcMount, Obio@sampleDetailList[[i]]$path)
+        
+    }
+}
+        
+ 
+## Create shiny path for figure outputs ##           
+shinyURL <- paste0(
+    "https://bioinformatics.crick.ac.uk/shiny/users/boeings/",
+    Obio@parameterList$project_id,
+    "_app/"
+)            
+        
+    
+
+## Create outputfolders ##
+if (!dir.exists(paste0(Obio@parameterList$localWorkDir,Obio@parameterList$project_id))){
+    dir.create(paste0(Obio@parameterList$localWorkDir,Obio@parameterList$project_id))
+}
+
+
+
+Obio@parameterList[["html_local"]] <- paste0(Obio@parameterList$localWorkDir, "html_local/")
+
+if (!dir.exists(Obio@parameterList[["html_local"]])){
+    dir.create(Obio@parameterList[["html_local"]])
+}
+
+Obio@parameterList[["reportFigDir"]] <- paste0(Obio@parameterList$html_local, "report_figures/")
+pdfTemp <- paste0(Obio@parameterList$reportFigDir, "temp.pdf")
+
+
+if (!dir.exists(Obio@parameterList$reportFigDir)){
+    dir.create(Obio@parameterList$reportFigDir)
+}
+
+## Create data dir
+Obio@parameterList[["data_dir"]] <- paste0(Obio@parameterList$localWorkDir, "data/")
+
+if (!dir.exists(Obio@parameterList$data_dir)){
+    dir.create(Obio@parameterList$data_dir)
+}
+
+
+pos <- grep("^host$", names(Obio@parameterList))
+if (length(pos) ==0 ){
+    Obio@parameterList$host <- NULL
+    
+    if (is.null(Obio@dbDetailList)){
+        Obio@dbDetailList = list("host" = NULL)
+    }
+    
+}
+
+if (!is.null(Obio@parameterList$host)){
+    if (Obio@parameterList$host == "10.27.241.234"){
+        urlString <- "biologic.thecrick.org"
+    } else {
+        urlString <- "biologic.crick.ac.uk"
+    }    
+} else {
+    urlString <- ""
+}
+
+
+
+
+
+##                                                                           ##
+###############################################################################
+
+```
+
+
+

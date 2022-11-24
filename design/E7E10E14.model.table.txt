@@ -1,0 +1,6 @@
+"comparison"	"comparisonID"	"test"	"type"	"model"	"reducedModel"	"normalizeAllSamplesTogether"	"betaPrior"
+"KO_vs_WT"	"comp_1"	"Wald"	"DGE"	"~ condition"	""	FALSE	TRUE
+"KO_T0h_vs_WT_T0h"	"comp_2"	"Wald"	"DGE"	"~ condition"	""	FALSE	TRUE
+"KO_T2h_vs_WT_T2h"	"comp_3"	"Wald"	"DGE"	"~ condition"	""	FALSE	TRUE
+"KO_T8h_vs_WT_T8h"	"comp_4"	"Wald"	"DGE"	"~ condition"	""	FALSE	TRUE
+"KO_T24h_vs_WT_T24h"	"comp_5"	"Wald"	"DGE"	"~ condition"	""	FALSE	TRUE

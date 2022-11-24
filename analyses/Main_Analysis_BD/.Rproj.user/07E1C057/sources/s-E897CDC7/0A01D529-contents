@@ -1,0 +1,258 @@
+---
+output: 
+    html_document:
+        code_folding: hide
+        df_print: tibble
+        highlight: default
+        theme: paper
+        toc: true
+        toc_depth: 5
+        toc_float: true
+        css: src/assets/style/style.css
+
+always_allow_html: yes
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+    tidy = F,
+    tidy.opts = list(width.cutoff = 120),
+    message = FALSE,
+    warning = FALSE
+)
+
+
+
+
+###############################################################################
+##                                                                           ##
+figureCount <- 1
+
+## Load R module load R/3.5.1-foss-2018b ##
+#setwd(Obio@parameterList$localWorkDir)
+
+
+
+
+##                                                                           ##
+###############################################################################
+
+###############################################################################
+## Set optional global analysis variables                                    ##
+
+# Standard deviation cut-off for Volcanoplot log-fold change (module C.9.) and hypergeometric test enrichments (module C.10)
+
+sdCutOff <- 2 
+##                                                                           ##
+###############################################################################
+
+###############################################################################
+## Start or reactivate renv                                                  ##
+
+## Renv will copy pages to the Renviron file, which is kept at
+# vim ~/.Renviron
+# system("more ~/.Renviron")
+
+myPaths <- .libPaths()
+myNewPaths <- c("/camp/stp/babs/working/boeings/Projects/pachnisv/song.chng/195B_RNAseq_enteric_neurons_DIV_timecourse/basedata", myPaths)
+.libPaths(myNewPaths)
+#library(renv)
+#.libPaths(myPaths)
+
+if (file.exists("renv.lock")){
+    renv::restore()
+} else {
+    renv::init()
+}
+
+## Saving entire workspace for trouble-shooting
+# save.image(file='../tempProject.RData')
+# 
+# To load this data later you can use:
+# 
+# load('../tempProject.RData')
+
+
+## Done 
+###############################################################################
+
+
+
+cwd <- getwd()
+setwd("..")
+tempWorkDir <- getwd()
+setwd(cwd)
+
+## Load custom packages specific for this analysis ##
+
+source("assets/R/SBwebtools.pckg.r")
+
+upload.results.to.database <- TRUE
+save.chunk.intermediates <- TRUE
+
+```
+
+
+<!-- Running Individual Modules in R -->
+<!-- For example rmarkdown::render("src/modules/settings/partB.set.parameters.Rmd", output_dir = "..") -->
+
+
+<!-- Essential 1: Set Analysis Parameters Chapter/Module (output required later) -->
+```{r child = 'src/modules/partC_Report/C.1.set.parameters.Rmd', eval=TRUE}
+```
+
+<!-- Essential 1.2: Load Datasets for this report -->
+```{r child = 'src/modules/partC_Report/C.1.2.load.data.for.report.Rmd', eval=TRUE}
+```
+
+<!-- Optional 2: Retrieve Reference Genes from Database or Gmt file -->
+```{r child = 'src/modules/partC_Report/C.2.retrieve.reference.gene.sets.Rmd', eval=TRUE}
+```
+
+<!-- Essential 3: (output required later): Create Integrated Seurat Object Chapter/Module -->
+```{r child = 'src/modules/partC_Report/C.3.alignment.summary.Rmd', eval=TRUE}
+```
+
+<!-- Optional 4: (creates output only): Analysis Guide -->
+```{r child = 'src/modules/partC_Report/C.4.analysis.guide.text.Rmd', eval=TRUE}
+```
+
+<!-- Optional 5: (output required later): Display design tables -->
+```{r child = 'src/modules/partC_Report/C.5.display.design.table.and.formula.table.Rmd', eval=TRUE}
+```
+
+<!-- Optional 6: (output only): sample characterization Chapter/Module -->
+```{r child = 'src/modules/partC_Report/C.6.sample.characterization.Rmd', eval=TRUE}
+```
+
+
+<!-- Optional 7: (output only): PCA sample characterization Chapter/Module -->
+```{r child = 'src/modules/partC_Report/C.7.pca.characterization.Rmd', eval=TRUE}
+```
+
+<!-- Optional 8: (output only): Gene Category Heatmaps Chapter/Module -->
+```{r child = 'src/modules/partC_Report/C.8.heatmaps.Rmd', eval=TRUE}
+```
+
+<!-- Optional 9: (output only): MA- and Volcanoplot Chapter/Module -->
+```{r child = 'src/modules/partC_Report/C.9.volcanoplots.ma.plots.Rmd', eval=TRUE}
+```
+
+<!-- Optional 10: (output only): Category Enrichment Hypergeometric Test Chapter/Module -->
+```{r child = 'src/modules/partC_Report/C.10.cat.enrichment.HG.Rmd', eval=TRUE}
+```
+
+
+<!-- Optional 11: (output only): Category Enrichment fGSEA Method Chapter/Module -->
+```{r child = 'src/modules/partC_Report/C.11.cat.enrichment.fGSEA.Rmd', eval=TRUE}
+```
+
+<!-- Optional 12: (output only): LRT Analysis Chapter/Module -->
+```{r child = 'src/modules/partC_Report/C.12.LRT.plots.Rmd', eval=TRUE}
+```
+
+<!-- Optional 13: (output only): Documentation Chapter/Module -->
+```{r child = 'src/modules/partC_Report/C.13.bulkRNAseq.documentation.Rmd', eval=TRUE}
+```
+
+
+
+
+```{r saveobject, eval=TRUE, echo=T, results=F}
+### Will save Obio object here, so it can be re-used with different parameters
+# save(Obio, 
+#      file = paste0(
+#          Obio@parameterList$localWorkDir,
+#          Obio@parameterList$project_id,
+#          ".bioLOGIC.Robj"
+#      )
+# )
+# 
+# print("Obio Object saved.")
+
+#renv::snapshot
+
+```
+
+
+
+```{r create_report_params, eval=T, results="asis"}
+
+## Try to retrieve project data from db ##
+library(RMySQL)
+db.pwd2 <- "_asf_"
+db.user2 <- "asf"
+host2 <- "ms1.thecrick.org"
+projectParams <- Obio@documentationParams
+
+tryCatch({
+    dbDB = dbConnect(drv = RMySQL::MySQL(), user = db.user2, password = db.pwd2, host = host2, dbname = "asf");
+dfProposal =  dbGetQuery(dbDB, paste0("SELECT * FROM asf_proposals WHERE project_name ='",Obio@parameterList$lims.id,"'"));
+dbDisconnect(dbDB)
+  }, error = function(x) {
+    message("Project Database could not be reached or has no entry in Obio@parameterList$lims.id for this analysis.")
+   
+})
+
+if (exists("dfProposal")){
+  if (nrow(dfProposal) == 1){
+      if (!is.na(dfProposal[1,"ProjectAlias"]) & dfProposal[1,"ProjectAlias"] != ""){
+          projectParams[["title"]] = paste0(dfProposal[1,"ProjectAlias"], " - ", dfProposal[1,"project_name"])
+      }
+      
+      if (!is.na(dfProposal[1,"project_user"]) & dfProposal[1,"project_user"] != ""){
+          projectParams[["subtitle"]] = paste0(dfProposal[1,"user_lab"], " Lab - ", dfProposal[1,"project_user"])
+          projectParams[["subtitle"]] <- gsub("^ Lab - ", "", projectParams[["subtitle"]])
+          
+      }
+      
+      if (!is.na(dfProposal[1,"proposal_text"]) & dfProposal[1,"proposal_text"] != ""){
+          projectParams[["abstract"]] = dfProposal[1,"proposal_text"]
+         
+          
+      }
+  }
+}
+   
+## Escape all special characters
+projectParams <- lapply(
+  projectParams, function(x) 
+  #gsub("([.|()\\^{}+$*?]|\\[|\\])", "\\\\\1", x)
+  gsub("([.|()/\\^{}+$*?]|\\[|\\])", " ", x)
+) 
+
+projectParams <- lapply(
+  projectParams, function(x) 
+  #gsub("([.|()\\^{}+$*?]|\\[|\\])", "\\\\\1", x)
+  gsub("\\\n", " ", x)
+) 
+
+
+#projectParams$title <- "Title"
+# projectParams$abstract <- "This is the QC section."
+#projectParams$subtitle <- "Abstract"
+
+```
+
+
+
+## Documentation
+```{r documentation, eval=TRUE, echo=F, results=T}
+#renv::snapshot()
+
+sessionInfo()
+```
+
+---
+title: "`r projectParams$title`"
+subtitle:  "`r projectParams$subtitle`"
+author:
+    - Bioinformatics: Stefan Boeing^[The Francis Crick Institute, stefan.boeing@crick.ac.uk]
+date: 'Compiled: `r format(Sys.Date(), "%B %d, %Y")`'
+
+abstract: |
+    "`r projectParams$abstract`"
+
+
+---

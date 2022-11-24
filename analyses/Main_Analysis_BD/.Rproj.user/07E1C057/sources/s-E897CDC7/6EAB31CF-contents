@@ -1,0 +1,275 @@
+---
+output: 
+    html_document:
+        code_folding: hide
+        df_print: tibble
+        highlight: default
+        theme: paper
+        toc: true
+        toc_depth: 5
+        toc_float: true
+        css: src/assets/style/style.css
+
+always_allow_html: yes
+
+
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+    tidy = F,
+    tidy.opts = list(width.cutoff = 120),
+    message = FALSE,
+    warning = FALSE
+)
+
+# R to use
+# module purge;source /camp/stp/babs/working/software/modulepath_new_software_tree_2018-08-13;module load pandoc/2.2.3.2-foss-2016b;ml R/4.0.3-foss-2020a;R
+
+#if (!require("remotes")){
+#  install.packages("remotes")
+#}
+
+#remotes::install_github("rstudio/renv")
+
+if (!file.exists("renv.lock")){
+    renv::init()
+} else {
+    renv::restore(prompt=FALSE)
+}
+
+#renv::install("decusinlabore/biologicSeqTools2")
+
+workdir <- getwd()
+figureCount <- 1
+tableCount <- 1
+upload.to.database <- TRUE
+
+```
+   
+# Create biologic Settings File
+In this script all input files will be checked and/or created. 
+
+
+```{r, echo=T, eval=TRUE, warning=FALSE, results="asis"}
+
+###############################################################################
+###############################################################################
+## Start by navigating into projectFolder/bulkRNAseq_workflow                ##
+###############################################################################
+###############################################################################
+
+
+## Suggested data structure:
+## projectDir/workdir/bulkRNAseq_workflow
+
+
+################################################################################
+## Function to create a biologic settings file                                ##
+
+
+
+## End of function                                                          ##
+##############################################################################
+
+###############################################################################
+###############################################################################
+## Prepare the following files                                               ##
+###############################################################################
+###############################################################################
+
+## Design file ##
+
+## In this example "/camp/stp/babs/working/boeings/Projects/goulda/adrien.franchet/472A_brains_from_drosophila_larvae_RN21220/workdir/bulkRNAseq_workflow/design/RN21220test.design.table.txt"
+
+## Model file ##
+## In this example 
+
+pipelineList <- biologicSeqTools2::assembleBiologicProject(
+  ## Path to the design file. Essential columns: sample.id, sample.group, dataseries. ##
+  ## Ideal sample name: [dataseries]_[sample.group]_[replicate]
+  designFN =  "/camp/stp/babs/working/strohbs/projects/hillc/ilaria.gori/RN19316_molecular_mechanism_underlying_Shpritzen_Goldberg_syndrome/BIOLOGICS_data_upload/bulkRNAseq_workflow/DESeq2_input/RN19316_design.txt",
+  ## Path to model table ##
+  #modelFN =  "/camp/stp/babs/working/boeings/Projects/anastasioud/frederick.clasen/483_P2RN21224_bulkRNAseq_RN21224_part2/workdir/bulkRNAseq_workflow/design/P2RN21224.model.table.txt",
+  ## Path to NFcore setting file. Set to NULL in no-alignment mode.
+  #NFcoreSettingsFN = "/camp/stp/babs/working/boeings/Projects/goulda/adrien.franchet/472A_brains_from_drosophila_larvae_RN21220/workdir/bulkRNAseq_workflow/design/RN21220test.NFcore.samplesheet.file.csv",
+  ## Path to relevant FASTQ files.
+  #pathToSeqStorageFolder = c(
+  #    "/camp/stp/babs/inputs/sequencing/data/goulda/adrien.franchet/RN21220/primary_data/211203_A01366_0104_AH3WVGDMXY/fastq/",
+  #    "/camp/stp/babs/inputs/sequencing/data/goulda/adrien.franchet/RN21220/primary_data/211130_A01366_0101_BH3YWKDMXY/fastq/"
+  #),
+  ## Path to RSEM count table. Essential.
+  countTableFN = "/camp/stp/babs/working/strohbs/projects/hillc/ilaria.gori/RN19316_molecular_mechanism_underlying_Shpritzen_Goldberg_syndrome/BIOLOGICS_data_upload/bulkRNAseq_workflow/DESeq2_input/dfRSEMcounts.txt",
+  ## Path to TPM table.
+  TpmTableFN =  "/camp/stp/babs/working/strohbs/projects/hillc/ilaria.gori/RN19316_molecular_mechanism_underlying_Shpritzen_Goldberg_syndrome/BIOLOGICS_data_upload/bulkRNAseq_workflow/DESeq2_input/dfTPM.txt",
+  PcaFN =  "/camp/stp/babs/working/strohbs/projects/hillc/ilaria.gori/RN19316_molecular_mechanism_underlying_Shpritzen_Goldberg_syndrome/BIOLOGICS_data_upload/bulkRNAseq_workflow/DESeq2_input/dfPCA.txt",
+  #"/camp/stp/babs/working/boeings/Projects/goulda/adrien.franchet/472A_brains_from_drosophila_larvae_RN21220/workdir/data/dfPca.txt",
+  calculate_DGE = FALSE,
+  calculate_LRT = FALSE,
+  ## Path to external DEseq2 output files
+  DEseq2External_DGE = "/camp/stp/babs/working/strohbs/projects/hillc/ilaria.gori/RN19316_molecular_mechanism_underlying_Shpritzen_Goldberg_syndrome/BIOLOGICS_data_upload/bulkRNAseq_workflow/DESeq2_input/DESeq2_DEG/",
+  #"/camp/stp/babs/working/boeings/Projects/goulda/adrien.franchet/472A_brains_from_drosophila_larvae_RN21220/workdir/data/DEseq2External_DGE/",
+  DEseq2External_LRT = "/camp/stp/babs/working/strohbs/projects/hillc/ilaria.gori/RN19316_molecular_mechanism_underlying_Shpritzen_Goldberg_syndrome/BIOLOGICS_data_upload/bulkRNAseq_workflow/DESeq2_input/DESeq2_LRT/",
+  #"/camp/stp/babs/working/boeings/Projects/goulda/adrien.franchet/472A_brains_from_drosophila_larvae_RN21220/workdir/data/DEseq2External_LRT/",
+  #stranded = TRUE,
+  #read.length = "100bp",
+  #paired.end = FALSE,
+  #pathToRSEMresultsFiles = paste0("/camp/stp/babs/working/boeings/Projects/goulda/adrien.franchet/472_brains_from_drosophila_larvae_RN21220/workdir/", "RSEM/Ensembl/"),
+  projectFolder = "/camp/stp/babs/working/boeings/Projects/boeings/stefan.boeing/dev_test/",
+  experiment_id = "RN19316test",
+  project_name = "Molecular Mechanisms underlying Shprizen-Goldberg syndorme",
+  lims.id = "RN19316",
+  labname = "Hill",
+  NtopGenes = 500,
+  experiment.type = "bulk_rna_seq",
+  species = "homo_sapiens",
+  release = "release-89",
+  count.table.headline = "TPM-values for all Samples",
+  count.table.sidelabel = "TPM",
+  heatmap.headline.text = "Heatmap: Row-averaged Expr",
+  designTScol = NULL,
+  timecourse.units = NULL,
+  primDataDB = "chl_data",
+  db.user = "babs",
+  host = "10.27.241.82",
+  lab.categories.table = "ch_lab_categories"
+)
+
+
+```
+
+  
+
+<!-- Essential 1: (output required later): Set Parameters and directories and create Obio object Chapter/Module -->
+<!-- This section creates the plain Obio object without any data in it. -->
+```{r child = 'src/modules/settings/set.parameters.Rmd', eval=TRUE}
+```
+
+<!-- Create fastq analysis files-->
+```{r, echo=T, eval=TRUE, warning=FALSE, results="asis"}
+
+
+## Optional: Create NF-core RNA Seq Script
+# biologicSeqTools2::createbulkRNASeqAnalysisNFcoreScript(
+#     obj = Obio,
+#     NFcoreSettingsFN = pipelineList$NFcoreSettingsFN,
+#     scriptVecSlot = "scriptVec"
+# )
+# 
+# print(paste0("run NF-core script ", pipelineList$NFcoreSettingsFN))
+
+## Done creating analysis bash scripts                                       ##
+###############################################################################
+```
+
+
+
+
+```{r saveobject, eval=TRUE, echo=T, results=F}
+### Will save Obio object here, so it can be re-used with different parameters
+save(Obio, 
+     file = paste0(
+         Obio@parameterList$localWorkDir,
+         Obio@parameterList$project_id,
+         ".bioLOGIC.Robj"
+     )
+)
+
+print("R bioLOGIC bulk RNAseq Object initialized.")
+
+# renv::snapshot()
+
+```
+
+## Documentation
+```{r documentation, eval=TRUE, echo=T, results=T}
+sessionInfo()
+```
+
+```{r create_report_params, eval=T, results="asis"}
+
+## Try to retrieve project data from db ##
+db.pwd2 <- "zU3ufd9L"
+db.user2 <- "reader"
+host2 <- "clvd1-db-u-p-17.thecrick.org"
+projectParams <- Obio@documentationParams
+
+tryCatch({
+    dbDB = DBI::dbConnect(
+        drv = RMySQL::MySQL(), 
+        user = db.user2, 
+        password = db.pwd2, 
+        host = host2, 
+        dbname = "clarity_shadow"
+    )
+    dfProposal <-  DBI::dbGetQuery(
+        dbDB, 
+        paste0("SELECT * FROM clarify_asf_proposals WHERE project_name ='",Obio@projectDetailList$lims.id,"'")
+    )
+    dbDisconnect(dbDB)
+}, error = function(x) {
+    message("Project Database could not be reached or has no entry in Obio@parameterList$lims.id for this analysis.")
+})
+
+###############################################################################
+## Helper
+firstup <- function(x) {
+    substr(x, 1, 1) <- toupper(substr(x, 1, 1))
+    x
+}
+##
+###############################################################################
+
+
+if (exists("dfProposal")){
+    if (!is.na(dfProposal[1,"ProjectAlias"]) & dfProposal[1,"ProjectAlias"] != ""){
+        projectParams[["title"]] = paste0(dfProposal[1,"ProjectAlias"], " - ", dfProposal[1,"project_name"])
+    }
+    
+    if (!is.na(dfProposal[1,"project_user"]) & dfProposal[1,"project_user"] != ""){
+        labString <- firstup(dfProposal[1,"user_lab"])
+        labString <- substr(labString, 1, (nchar(labString) - 1))
+      
+        projectParams[["subtitle"]] = paste0(labString, " Lab - ", dfProposal[1,"project_user"])
+        projectParams[["subtitle"]] <- gsub("^ Lab - ", "", projectParams[["subtitle"]])
+        
+    }
+    
+    if (!is.na(dfProposal[1,"proposal_text"]) & dfProposal[1,"proposal_text"] != ""){
+        projectParams[["abstract"]] = dfProposal[1,"proposal_text"]
+       
+        
+    }
+}
+   
+## Escape all special characters
+projectParams <- lapply(
+  projectParams, function(x) 
+  #gsub("([.|()\\^{}+$*?]|\\[|\\])", "\\\\\1", x)
+  gsub("([.|()/\\^{}+$*?]|\\[|\\])", " ", x)
+) 
+
+projectParams <- lapply(
+  projectParams, function(x) 
+  #gsub("([.|()\\^{}+$*?]|\\[|\\])", "\\\\\1", x)
+  gsub("\\\n", " ", x)
+) 
+
+
+#projectParams$title <- "Title"
+projectParams$abstract <- "This is the QC section. In this section basic sequencing parameters are documented. Then particles that contain only ambient RNA or dead/dying cells are identified to be removed. An estimate on doubets (GEMS containing more than one cell) is made. Finally biological biases by cell cycle or gender are evaluated and regressed out as required."
+#projectParams$subtitle <- "Abstract"
+
+```
+
+---
+title: "`r projectParams$title`"
+subtitle:  "`r projectParams$subtitle`"
+author:
+    - Stefan Boeing^[The Francis Crick Institute, stefan.boeing@crick.ac.uk]
+date: 'Compiled: `r format(Sys.Date(), "%B %d, %Y")`'
+
+abstract: |
+    "`r projectParams$abstract`"
+
+---

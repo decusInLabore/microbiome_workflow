@@ -1,0 +1,243 @@
+---
+output: 
+    html_document:
+        code_folding: hide
+        df_print: tibble
+        highlight: default
+        theme: paper
+        toc: true
+        toc_depth: 5
+        toc_float: true
+        css: src/assets/style/style.css
+
+always_allow_html: yes
+
+
+---
+    
+    
+```{r setup, include=FALSE}
+
+# R to use
+# module purge;source /camp/stp/babs/working/software/modulepath_new_software_tree_2018-08-13;module load pandoc/2.2.3.2-foss-2016b;ml R/4.0.3-foss-2020a;R
+
+# if (!requireNamespace("remotes")){
+#   install.packages("remotes")
+# }
+
+# remotes::install_github("rstudio/renv")
+
+if (!file.exists("renv.lock")){
+    renv::init(prompt=F)
+} else {
+    renv::restore(prompt = FALSE)
+}
+
+knitr::opts_chunk$set(
+    tidy = F,
+    tidy.opts = list(width.cutoff = 120),
+    message = FALSE,
+    warning = FALSE
+)
+
+
+workdir <- getwd()
+figureCount <- 1
+tableCount <- 1
+
+if (dir.exists("/Volumes/babs/working/boeings/")){
+    hpc.mount <- "/Volumes/babs/working/boeings/"
+} else if (dir.exists("Y:/working/boeings/")){
+    hpc.mount <- "Y:/working/boeings/"
+} else if (dir.exists("/camp/stp/babs/working/boeings/")){
+    hpc.mount <- "/camp/stp/babs/working/boeings/"
+} else {
+    hpc.mount <- ""
+}
+
+## Make sure the correct future version (> 1.2) is installed
+#renv::install("https://cran.r-project.org/src/contrib/Archive/future/future_1.19.1.tar.gz")
+## Doublet Finder
+# renv::install("chris-mcginnis-ucsf/DoubletFinder")
+# renv::install("bioc::clusterProfiler")
+# renv::install("bioc::AUCell")
+# renv::install("YuLab-SMU/ggtree")
+
+
+# renv::install("decusInLabore/biologicSeqTools2")
+# renv::install("decusInLabore/biologicToolsSC")
+library(Seurat)
+library(biologicSeqTools2)
+library(biologicToolsSC)
+
+###############################################################################
+## Set db access credentials                                                 ##
+
+## Loading the BABS password ##
+FN <- paste0(hpc.mount, "Projects/reference_data/pwd_folder/babs.txt")
+dbTable <- read.delim(
+  FN,
+  header = F,
+  sep = "\t",
+  stringsAsFactors = F
+)
+
+db.pwd <- as.vector(dbTable[1,1])
+
+
+## Done                                                                      ##
+###############################################################################
+
+
+```
+
+<!-- Outputs/results from essential blocks will be required for subsequent modules. -->
+<!-- Essential modules should be run in order. -->
+<!-- Optional modules create output only. -->
+
+<!-- Essential 1: (output required later): Set Parameters and directories and create Obio object Chapter/Module -->
+```{r child = 'src/modules/settings/set.parameters.Rmd', eval=TRUE}
+```
+
+<!-- Optional/Essential for cell cycle regression 1A: Retrieve Reference Genes from Database or Gmt file -->
+```{r child = 'src/modules/section_B/B.2.retrieve.reference.gene.sets.Rmd', eval=TRUE}
+```
+
+<!-- Optional 1B: Create 10X QC Table Chapter/Module -->
+```{r child = 'src/modules/qc/create.10X.QC.table.Rmd', eval=TRUE}
+```
+
+<!-- Essential 2: (output required later): Create Seurat Sample List Chapter/Module -->
+```{r child = 'src/modules/qc/A.create.sample.list.Rmd', eval=TRUE}
+```
+
+<!-- Optional 3: Create QC Plots Chapter/Module -->
+```{r child = 'src/modules/qc/A.create.sample.level.QC.plots.Rmd', eval=TRUE}
+```
+
+<!-- Optional 4: Create QC Cell Cycle Plots Chapter/Module -->
+```{r child = 'src/modules/qc/A.create.sample.level.cell.cycle.QC.plots.Rmd', eval=FALSE}
+```
+
+<!-- Optional 5: Doublet finder module run.doublet.finder.Rmd -->
+```{r child = 'src/modules/qc/A.run.doublet.finder.Rmd', eval=TRUE}
+```
+
+<!-- Optional 6: Perform three cell cycle regressions: none, G2M/S and full Chapter/Module -->
+```{r child = 'src/modules/qc/A.perform.cell.cycle.regression.Rmd', eval=TRUE}
+```
+
+<!-- Optional 7: Create category feature plots -->
+```{r child = 'src/modules/qc/A.create.integrated.cat.feature.plots.Rmd', eval=FALSE}
+```
+
+
+
+
+
+```{r saveobject, eval=TRUE, echo=T, results=F}
+### Will save Obio object here, so it can be re-used with different parameters
+save(Obio, 
+     file = paste0(
+         Obio@parameterList$localWorkDir,
+         Obio@parameterList$project_id,
+         ".bioLOGIC.Robj"
+     )
+)
+
+print("R bioLOGIC single cell object initialized.")
+
+```
+
+## Documentation
+```{r documentation, eval=TRUE, echo=T, results=T}
+sessionInfo()
+```
+
+```{r create_report_params, eval=T, results="asis"}
+
+## Try to retrieve project data from db ##
+db.pwd2 <- "zU3ufd9L"
+db.user2 <- "reader"
+host2 <- "clvd1-db-u-p-17.thecrick.org"
+projectParams <- Obio@documentationParams
+
+tryCatch({
+    dbDB = DBI::dbConnect(
+        drv = RMySQL::MySQL(), 
+        user = db.user2, 
+        password = db.pwd2, 
+        host = host2, 
+        dbname = "clarity_shadow"
+    )
+    dfProposal <-  DBI::dbGetQuery(
+        dbDB, 
+        paste0("SELECT * FROM clarify_asf_proposals WHERE project_name ='",Obio@projectDetailList$lims.id,"'")
+    )
+    dbDisconnect(dbDB)
+}, error = function(x) {
+    message("Project Database could not be reached or has no entry in Obio@parameterList$lims.id for this analysis.")
+})
+
+###############################################################################
+## Helper
+firstup <- function(x) {
+    substr(x, 1, 1) <- toupper(substr(x, 1, 1))
+    x
+}
+##
+###############################################################################
+
+
+if (exists("dfProposal")){
+    if (!is.na(dfProposal[1,"ProjectAlias"]) & dfProposal[1,"ProjectAlias"] != ""){
+        projectParams[["title"]] = paste0(dfProposal[1,"ProjectAlias"], " - ", dfProposal[1,"project_name"])
+    }
+    
+    if (!is.na(dfProposal[1,"project_user"]) & dfProposal[1,"project_user"] != ""){
+        labString <- firstup(dfProposal[1,"user_lab"])
+        labString <- substr(labString, 1, (nchar(labString) - 1))
+      
+        projectParams[["subtitle"]] = paste0(labString, " Lab - ", dfProposal[1,"project_user"])
+        projectParams[["subtitle"]] <- gsub("^ Lab - ", "", projectParams[["subtitle"]])
+        
+    }
+    
+    if (!is.na(dfProposal[1,"proposal_text"]) & dfProposal[1,"proposal_text"] != ""){
+        projectParams[["abstract"]] = dfProposal[1,"proposal_text"]
+       
+        
+    }
+}
+   
+## Escape all special characters
+projectParams <- lapply(
+  projectParams, function(x) 
+  #gsub("([.|()\\^{}+$*?]|\\[|\\])", "\\\\\1", x)
+  gsub("([.|()/\\^{}+$*?]|\\[|\\])", " ", x)
+) 
+
+projectParams <- lapply(
+  projectParams, function(x) 
+  #gsub("([.|()\\^{}+$*?]|\\[|\\])", "\\\\\1", x)
+  gsub("\\\n", " ", x)
+) 
+
+
+#projectParams$title <- "Title"
+projectParams$abstract <- "This is the QC section. In this section basic sequencing parameters are documented. Then particles that contain only ambient RNA or dead/dying cells are identified to be removed. An estimate on doubets (GEMS containing more than one cell) is made. Finally biological biases by cell cycle or gender are evaluated and regressed out as required."
+#projectParams$subtitle <- "Abstract"
+
+```
+
+---
+title: "`r projectParams$title`"
+subtitle:  "`r projectParams$subtitle`"
+author:
+    - Stefan Boeing^[The Francis Crick Institute, stefan.boeing@crick.ac.uk]
+date: 'Compiled: `r format(Sys.Date(), "%B %d, %Y")`'
+
+abstract: |
+    "`r projectParams$abstract`"
+
+---

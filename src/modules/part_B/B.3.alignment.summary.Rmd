@@ -1,0 +1,53 @@
+<!-- Set PArameters Module -->
+<!-- Set the chnkPrefix to make all chunks unique in the overall folder -->
+```{r, echo=FALSE, eval=TRUE, warning=FALSE}
+chnkPrefix <- "B3.alignment."
+VersionPdfExt <- VersionPdfExt <- paste0(".",chnkPrefix,"V", gsub("-", "", Sys.Date()), ".pdf")
+
+```
+
+
+## Read Alignment
+```{r, echo=F, eval=TRUE, warning=FALSE, result="asis"}
+
+chnkVec <- as.vector(NULL, mode = "character")
+
+FN  <- paste0(Obio@parameterList$localWorkDir, list.files(Obio@parameterList$localWorkDir)[grep(paste0("^",Obio@parameterList$project_id, ".documentationShell.script.sh"), list.files(Obio@parameterList$localWorkDir))])
+
+if (length(FN) == 1){
+    dfDocu <- read.delim(FN, header=F, sep="\t")
+    
+    NewChnk <- paste0(
+        "\n```{r Alignment, results='asis', echo=TRUE, eval=FALSE, warning=FALSE}\n",
+        " \n"
+    )
+    
+    chnkVec <- c(
+        chnkVec,
+        NewChnk
+    )
+    
+    for (i in 1:nrow(dfDocu)){
+        
+        NewChnk <- paste0(
+            dfDocu[i,1], 
+            " \n "
+        )
+        chnkVec <- c(
+            chnkVec,
+            NewChnk
+        )
+    }
+    
+    NewChnk <- "\n\n\n```\n"
+    
+    chnkVec <- c(
+        chnkVec,
+        NewChnk
+    ) 
+}
+```
+
+```{r, echo=F, eval=TRUE, warning=FALSE, results="asis"}
+    cat(paste(knitr::knit(text = chnkVec, quiet = T), collapse = '\n'))
+```

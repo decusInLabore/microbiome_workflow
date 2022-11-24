@@ -1,0 +1,24 @@
+{
+    "id": "E54CE610",
+    "path": "/Volumes/babs/working/boeings/projects/boeings/stefan.boeing/dev_optim/biologicSeqTools2/R/SBwebtools.pckg.r",
+    "project_path": null,
+    "type": "r_source",
+    "hash": "0",
+    "contents": "",
+    "dirty": false,
+    "created": 1658442211798.0,
+    "source_on_save": false,
+    "relative_order": 4,
+    "properties": {
+        "cursorPosition": "13585,30",
+        "scrollLine": "13577"
+    },
+    "folds": "",
+    "lastKnownWriteTime": 1658443269,
+    "encoding": "UTF-8",
+    "collab_server": "",
+    "source_window": "",
+    "last_content_update": 1658443269,
+    "read_only": false,
+    "read_only_alternatives": []
+}

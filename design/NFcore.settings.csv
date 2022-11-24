@@ -1,0 +1,13 @@
+sample,fastq_1,fastq_2,strandedness
+Act_HPV8_rep1,/camp/stp/babs/working/boeings/Projects/hillc/simon.mccluney/499_bulkRNAseq_Activin_signature_GSE130017/FASTQ_files/SRR8927049.fastq.gz,,reverse
+Act_HPV8_rep2,/camp/stp/babs/working/boeings/Projects/hillc/simon.mccluney/499_bulkRNAseq_Activin_signature_GSE130017/FASTQ_files/SRR8927050.fastq.gz,,reverse
+Act_HPV8_rep3,/camp/stp/babs/working/boeings/Projects/hillc/simon.mccluney/499_bulkRNAseq_Activin_signature_GSE130017/FASTQ_files/SRR8927051.fastq.gz,,reverse
+Act_Wt_rep1,/camp/stp/babs/working/boeings/Projects/hillc/simon.mccluney/499_bulkRNAseq_Activin_signature_GSE130017/FASTQ_files/SRR8927052.fastq.gz,,reverse
+Act_Wt_rep2,/camp/stp/babs/working/boeings/Projects/hillc/simon.mccluney/499_bulkRNAseq_Activin_signature_GSE130017/FASTQ_files/SRR8927053.fastq.gz,,reverse
+Act_Wt_rep3,/camp/stp/babs/working/boeings/Projects/hillc/simon.mccluney/499_bulkRNAseq_Activin_signature_GSE130017/FASTQ_files/SRR8927054.fastq.gz,,reverse
+Wt_HPV8_rep1,/camp/stp/babs/working/boeings/Projects/hillc/simon.mccluney/499_bulkRNAseq_Activin_signature_GSE130017/FASTQ_files/SRR8927055.fastq.gz,,reverse
+Wt_HPV8_rep2,/camp/stp/babs/working/boeings/Projects/hillc/simon.mccluney/499_bulkRNAseq_Activin_signature_GSE130017/FASTQ_files/SRR8927056.fastq.gz,,reverse
+Wt_HPV8_rep3,/camp/stp/babs/working/boeings/Projects/hillc/simon.mccluney/499_bulkRNAseq_Activin_signature_GSE130017/FASTQ_files/SRR8927057.fastq.gz,,reverse
+Wt_Wt_rep1,/camp/stp/babs/working/boeings/Projects/hillc/simon.mccluney/499_bulkRNAseq_Activin_signature_GSE130017/FASTQ_files/SRR8927058.fastq.gz,,reverse
+Wt_Wt_rep2,/camp/stp/babs/working/boeings/Projects/hillc/simon.mccluney/499_bulkRNAseq_Activin_signature_GSE130017/FASTQ_files/SRR8927059.fastq.gz,,reverse
+Wt_Wt_rep3,/camp/stp/babs/working/boeings/Projects/hillc/simon.mccluney/499_bulkRNAseq_Activin_signature_GSE130017/FASTQ_files/SRR8927060.fastq.gz,,reverse

@@ -1,0 +1,1238 @@
+---
+title: "Bulk RNA-Seq Correlation Module"
+author: "Stefan Boeing stefan.boeing@crick.ac.uk"
+date: 'Compiled: `r format(Sys.Date(), "%B %d, %Y")`'
+output: 
+    html_document:
+        code_folding: hide
+        df_print: tibble
+        toc: true
+        toc_depth: 5
+        toc_float: true
+        css:
+
+always_allow_html: yes
+
+---
+
+```{css setup_css, echo=FALSE}
+
+
+.table{
+  width:auto;
+  font-size: 10px;
+}
+
+```
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+    tidy = TRUE,
+    tidy.opts = list(width.cutoff = 120),
+    message = FALSE,
+    warning = FALSE
+)
+
+# module purge;source /camp/stp/babs/working/software/modulepath_new_software_tree_2018-08-13;module load pandoc/2.2.3.2-foss-2016b;ml R/4.0.3-foss-2020a
+
+if (!require("remotes")){
+  install.packages("remotes")
+}
+
+remotes::install_github("rstudio/renv")
+
+if (!file.exists("renv.lock")){
+    renv::init()
+} else {
+    renv::restore(prompt = FALSE)
+}
+
+urlString <- "biologic.crick.ac.uk"
+```
+
+
+```{r methods, eval=T}
+
+```
+
+```{r set_directories, eval=T}
+## Setup plot collection object
+library(knitr)
+library(ggplot2)
+library(ggpubr)
+library(DT)
+
+addCorCatsToLabDb <- FALSE
+figureCount <- 1
+chnkVec <- as.vector(NULL, mode = "character")
+
+VersionPdfExt <- paste0(".V", gsub("-", "", Sys.Date()), ".pdf")
+
+if (dir.exists("/Volumes/babs/working/boeings/")){
+    hpc.mount <- "/Volumes/babs/working/boeings/"
+} else if (dir.exists("Y:/working/boeings/")){
+    hpc.mount <- "Y:/working/boeings/"
+} else if (dir.exists("/camp/stp/babs/working/boeings/")){
+    hpc.mount <- "/camp/stp/babs/working/boeings/"
+} else {
+    hpc.mount <- ""
+}
+
+renv::install("decusInLabore/biologicSeqTools")
+
+library(biologicSeqTools)
+
+
+## Heatmap setup ##
+## Select Heatmap samples ##
+FN <- paste0(hpc.mount, "Projects/reference_data/pwd_folder/babs.txt")
+dbTable <- read.delim(
+  FN,
+  header = F,
+  sep = "\t",
+  stringsAsFactors = F
+)
+
+db.pwd <- as.vector(dbTable[1,1])
+#setwd(Obio@parameterList$localWorkDir)
+
+ObioFN <- paste0("../",list.files("..")[grep(".bioLOGIC.Robj", list.files(".."))])
+
+load(ObioFN)
+
+
+Obio <- setMountingPoint(Obio)
+Obio <- setAnalysisPaths(Obio)
+Obio <- setCrickGenomeAndGeneNameTable(Obio)
+Obio <- createAnalysisFolders(
+    Obio
+)
+Obio <- setDataBaseParameters(Obio)
+
+
+Obio@parameterList[["reportFigDir"]] <- paste0(Obio@parameterList$localWorkDir,Obio@parameterList$project_id, "/report_figures/")
+
+## Create outputfolders ##
+if (!dir.exists(paste0(Obio@parameterList$localWorkDir,Obio@parameterList$project_id))){
+    dir.create(paste0(Obio@parameterList$localWorkDir,Obio@parameterList$project_id))
+}
+
+if (!dir.exists(Obio@parameterList$reportFigDir)){
+    dir.create(Obio@parameterList$reportFigDir)
+}
+
+figureCount <- 1
+
+```
+
+## Correlation Heatmap
+The correlation heatmap is based on the 500 most time-variable genes in this experiment. 
+
+```{r alignment_dat, echo=F, eval=TRUE, warning=FALSE, result="asis", include = FALSE}
+
+###############################################################################
+## Set parameters                                                            ##
+dist.method <- "euclidean"
+hclust.method <- "ward.D2"
+k.number <- 7
+spanPar = 0.75 # Default =0.75
+NtopTsGenes <- Obio@parameterList$NtopGenes
+TsLRTcol <- "contrast_L_lg10p_LRT_timepoint"
+
+minTPMavgTPMperSample <- 1
+colSelVec <- colnames(Obio@databaseTable)[grep("norm_counts_", colnames(Obio@databaseTable))]
+highlightGenes <- c("Ascl1")
+
+
+uploadLabCategories <- F
+
+## Done with parameters                                                      ##
+###############################################################################
+
+###############################################################################
+## Prepare annotation                                                        ##
+## Annotate highlight genes
+dfAnno <- unique(Obio@dfGeneAnnotation[,c(Obio@parameterList$geneIDcolumn, Obio@parameterList$primaryAlignmentGeneID)])
+
+dfAnnoHL <- dfAnno[dfAnno[,Obio@parameterList$geneIDcolumn] %in% highlightGenes,]
+
+
+## Done with annotation                                                      ##
+###############################################################################
+
+###############################################################################
+## Retrieve most variable genes                                              ##
+
+mostVarGenes <- Obio@dataTableList$Ntop4pcaGeneSelection
+
+dfTPM <- Obio@dfTPM
+
+
+row.names(dfTPM) <- dfTPM[,Obio@parameterList$primaryAlignmentGeneID]
+dfTPM <- dfTPM[mostVarGenes, ]
+dfAnno <- unique(Obio@dfGeneAnnotation[,c(Obio@parameterList$geneIDcolumn, Obio@parameterList$primaryAlignmentGeneID)])
+
+dfAnnoHL <- dfAnno[dfAnno[,Obio@parameterList$primaryAlignmentGeneID] %in% mostVarGenes,]
+
+dfTPM <- merge(dfTPM, dfAnnoHL, by.x = Obio@parameterList$primaryAlignmentGeneID, by.y = Obio@parameterList$primaryAlignmentGeneID)
+
+dfTPM[,Obio@parameterList$primaryAlignmentGeneID] <- NULL
+dfTPM[duplicated(dfTPM[, Obio@parameterList$geneIDcolumn]),Obio@parameterList$geneIDcolumn] <- paste0(dfTPM[duplicated(dfTPM[, Obio@parameterList$geneIDcolumn]),Obio@parameterList$geneIDcolumn] ,1:nrow(dfTPM[duplicated(dfTPM[, Obio@parameterList$geneIDcolumn]),]))
+
+row.names(dfTPM) <- dfTPM[, Obio@parameterList$geneIDcolumn]
+
+
+## Replace gene ids ##
+
+
+## Done retrieving top LRT genes                                             ##
+###############################################################################
+
+
+## Step 2 Calculate correlation on most variable genes
+dfTPM[,Obio@parameterList$geneIDcolumn] <- NULL
+df.data <- data.matrix(dfTPM)
+
+## Create sample correlation matrix ##
+df.sample.cor <- cor(df.data)
+
+## Create gene correlation matrix ##
+df.gene.cor <- cor(t(df.data))
+df.gene.cor[is.na(df.gene.cor)] = 0
+
+## Do manual correlaton calculation ##
+## Get clusters using hclust and dist ##
+
+mHmBase <- df.gene.cor
+
+library(RColorBrewer)
+hclustfunc <- function(x) hclust(x, method = hclust.method)
+distfunc <- function(x) dist(x, method = dist.method)
+d <- distfunc(mHmBase)
+fit <- hclustfunc(d)
+clusters <- cutree(fit, k = k.number)
+
+dfCluster <- data.frame(clusterID = clusters, geneID = names(clusters))
+names(dfCluster) <- gsub("geneID", Obio@parameterList$geneIDcolumn, names(dfCluster))
+dfCluster$clusterID <- paste0("Cor", dfCluster$clusterID)
+
+cluster.ids <- unique(dfCluster$clusterID)
+
+dfCluster <- data.frame(clusterID = clusters, geneID = names(clusters))
+names(dfCluster) <- gsub("geneID", Obio@parameterList$geneIDcolumn, names(dfCluster))
+dfCluster$clusterID <- paste0("Cor", dfCluster$clusterID)
+
+cluster.ids <- unique(dfCluster$clusterID)
+
+## Create cluster color labels
+
+df <- dfCluster
+
+## Add colors ##
+classes <- sort(unique(df[,"clusterID"]))
+colorVec <- scales::hue_pal()(length(classes))
+
+dfColor <- data.frame(
+    classes, 
+    colorVec
+)
+
+df <- merge(
+    df, 
+    dfColor, 
+    by.x = "clusterID",
+    by.y = "classes"
+)
+
+df <- df[df[,Obio@parameterList$geneIDcolumn] %in% colnames(mHmBase),]
+
+row.names(df) <- df[,Obio@parameterList$geneIDcolumn]
+
+df <- df[colnames(mHmBase),]
+
+df2 <- data.frame(df[,"clusterID"])
+names(df2) <- "Group"
+
+GroupVec <- as.vector(unique(df$colorVec))
+names(GroupVec) <- as.vector(unique(df[,"clusterID"]))
+
+
+top_ha = ComplexHeatmap::HeatmapAnnotation(df = df2, col = list(Group = GroupVec))
+
+ComplexHeatmap::ht_opt(
+    legend_border = "black",
+    heatmap_border = TRUE,
+    annotation_border = TRUE
+)
+
+
+## Create correlation heatmap and clustering
+library(ComplexHeatmap)
+f1 = circlize::colorRamp2(seq(-1, 1, length = 3), c("#3060cf", "#fffbbc","#c4463a"))
+
+
+## Create heatmap ##
+plotListHM <- list()
+chnkVec <- as.vector(NULL, mode="character")
+tag <- "CorHM"
+
+plotListHM[[tag]] <- Heatmap(
+    mHmBase,
+    column_title = paste0("TS Correlation Heatmap ", Obio@parameterList$NtopGenes),
+    name = "HM1", 
+    #row_km = 1,
+    col = f1,
+    show_column_names = F,
+    show_row_names = FALSE,
+    border = TRUE,
+    #Dendrogram configurations: columns
+    cluster_columns  = TRUE,
+    clustering_distance_columns="euclidean",
+    clustering_method_columns="ward.D2",
+    column_dend_height=unit(20,"mm"),
+            
+    #Dendrogram configurations: rows
+    cluster_rows = TRUE,
+    clustering_distance_rows="euclidean",
+    clustering_method_rows="ward.D2",
+    row_dend_width=unit(10,"mm"),
+    #top_annotation = ha,
+    show_heatmap_legend = TRUE,
+    #row_title = NULL,
+    #show_row_dend = FALSE
+    top_annotation = top_ha
+    #left_annotation = left_ha
+    #right_annotation = right_ha
+    
+) 
+
+
+FNbase <- paste0(tag, VersionPdfExt)
+FN <- paste0(Obio@parameterList$reportFigDir, FNbase)
+FNrel <- paste0("report_figures/", FNbase)
+
+pdf(FN)
+    print(plotListHM[[tag]])
+dev.off()
+
+
+## Create R markdown chunk ##
+figLegend <- paste0(
+    "**Figure ",
+    figureCount,
+    ":** Heatmap showing the ",
+    Obio@parameterList$NtopGenes,
+    " most variable genes in the time course. ",
+    "Download a pdf of this figure [here](", FNrel,"). "
+)
+
+
+figureCount <- figureCount + 1
+
+NewChnk <- paste0(
+    "### ", tag,
+    "\n```{r Heatmap_most_var_genes",
+    ", results='asis', echo=F, eval=TRUE, warning=FALSE, fig.cap='",
+    figLegend,"', fig.asp = 1, fig.align = 'center'}\n",
+    "\n",
+    "\n print(plotListHM[['",tag,"']])",
+    "\n cat(  '\n')",
+    "\n\n\n```\n"
+)
+
+
+chnkVec <- unique(c(
+    chnkVec,
+    NewChnk
+))
+
+## Step 3 Plot by median timeseries
+
+## Upload correlation class genes as gene cats
+```
+
+```{r knit_cor_plot_characterization_plot, echo=TRUE, eval=TRUE, warning=FALSE, results="asis"}
+cat(paste(knit(text = chnkVec, quiet = T), collapse = '\n'))
+```
+
+## Median gene expression pattern for each correlation cluster {.tabset .tabset-fade .tabset-pills}
+
+```{r add_cluster_measurements, echo=F, eval=TRUE, warning=FALSE, result="asis"}
+
+###############################################################################
+
+
+gmt.list <- list()
+max.length <- 0
+for (i in 1:length(cluster.ids)){
+    head <- paste0(Obio@parameterList$project_id, "_Correlation_Cluster_", i)
+    cat.id <- paste0(Obio@parameterList$project_id, "_temp_cc_", i)
+    head <- append(head, paste0("https:\\/\\/biologic.crick.ac.uk\\/", Obio@parameterList$project_id, "\\/category-view/", cat.id))
+    gene.vec <- as.vector(dfCluster[dfCluster[,"clusterID"] == cluster.ids[i], Obio@parameterList$geneIDcolumn])
+    
+    
+    
+    gmt.vec <- append(head, gene.vec)
+    gmt.list[[cat.id]] <- gmt.vec
+    if (max.length < length(gmt.vec)){
+        max.length <- length(gmt.vec)
+    }
+}
+
+## Add empty spaces to gmt.list to fill up to max.length
+for (i in 1:length(gmt.list)){
+    n.add <- max.length - length(gmt.list[[i]])
+    gmt.list[[i]] <- append(
+        gmt.list[[i]], rep("", n.add)
+    )
+}
+
+## Transform list into gmt data frame ##
+for (i in 1:length(gmt.list)){
+    if (i ==1){
+        df.gmt <- t(gmt.list[[i]])
+    } else {
+        df.gmt <- rbind(df.gmt, t(gmt.list[[i]]))
+    }
+}
+
+## Ensure df.gmt is a data frame
+df.gmt <- data.frame(df.gmt)
+## Write to file #3
+#setwd(Obio@parameterList$localWorkDir)
+FNc <- paste0(Obio@parameterList$localWorkDir, "cor.categories.gmt")
+write.table(df.gmt, FNc, row.names = FALSE, col.names = FALSE, sep="\t")
+
+# Before uploading you might want to remove temporaray entries associated with this project
+# DELETE FROM `es_lab_categories` WHERE cat_type = 'temp_esl111'
+
+## Remove old entries for this project
+if (addCorCatsToLabDb){
+library(RMySQL)
+dbDB = dbConnect(
+    drv = RMySQL::MySQL(),
+    user = Obio@dbDetailList$db.user,
+    password = db.pwd,
+    dbname = Obio@dbDetailList$ref.cat.db,
+    host = Obio@dbDetailList$host
+)
+
+dbGetQuery(dbDB, paste0("DELETE FROM ", Obio@parameterList$lab.categories.table, " WHERE cat_type='temp_cc_", Obio@parameterList$project_id,"'"))
+dbDisconnect(dbDB)
+
+## Done removing older categories for this project
+if (Obio@parameterList$geneIDcolumn %in% c("hgnc_symbol", "mgi_symbol")){
+    catGeneID <-  Obio@parameterList$geneIDcolumn
+} else {
+    catGeneID <- "hgnc_symbol"
+}
+
+
+msigdb.gmt2refDB(
+    df.gmt = df.gmt, #gmt.file = "cor.categories.gmt",
+    host = Obio@dbDetailList$host,
+    db.user = Obio@dbDetailList$db.user,
+    pwd = db.pwd,
+    ref.db = Obio@dbDetailList$ref.cat.db,
+    ref.db.table = Obio@dbDetailList$lab.categories.table,
+    cat_type = paste0("temp_cc_", Obio@parameterList$project_id),
+    data_source = " Gene Correlation Clusters",
+    keep.gene.values = FALSE,
+    gene.id = Obio@parameterList$geneIDcolumn,
+    create.new.table = FALSE,
+    mm.hs.conversion.file =  paste0(hpc.mount, "Projects/reference_data/20160303.homologene.data.txt")
+)
+}
+
+df.gmt[,2] <- gsub("RN20157_temp_cc_1", "kn_lab_categories__107", df.gmt[,2])
+df.gmt[,2] <- gsub("RN20157_temp_cc_2", "kn_lab_categories__108", df.gmt[,2])
+df.gmt[,2] <- gsub("RN20157_temp_cc_3", "kn_lab_categories__109", df.gmt[,2])
+df.gmt[,2] <- gsub("RN20157_temp_cc_4", "kn_lab_categories__110", df.gmt[,2])
+df.gmt[,2] <- gsub("RN20157_temp_cc_5", "kn_lab_categories__111", df.gmt[,2])
+df.gmt[,2] <- gsub("RN20157_temp_cc_6", "kn_lab_categories__112", df.gmt[,2])
+df.gmt[,2] <- gsub("RN20157_temp_cc_7", "kn_lab_categories__113", df.gmt[,2])
+
+
+
+## Create median profile plots for n correlation clusters ##
+```
+
+
+```{r function_block, echo=F, eval=TRUE, warning=FALSE, result="asis",include = FALSE}
+###############################################################################
+## Function Create cluster.timecourse.chart                                  ##
+###############################################################################
+
+createGroupList <- function(
+    dfDesign,
+    dsOrderVec = NULL
+){
+    ## Create an empty list
+    group.list <- list()
+    ## get all relevant dataseries
+    
+    if (is.null(dsOrderVec)){
+        ds <- unique(dfDesign$dataseries)
+    } else {
+        ds <- dsOrderVec
+    }
+    
+    for (i in 1:length(ds)){
+        group.list[[ds[i]]] <- unique(dfDesign[dfDesign$dataseries == ds[i], "sample.group"])
+    }
+    return(group.list)
+}
+
+
+###############################################################################
+## Method createMedianProfilePlots()                                        ##
+setGeneric(
+    name="createMedianTsPlots",
+    def=function(
+    obj = "Obio",
+    dfDesign = NULL,
+    df.gmt,
+    group.list = createGroupList(dfDesign, dsOrderVec = unique(dfDesign$dataseries)),
+    df.data = database.table,
+    data.selector = "^norm_counts_",
+    xlab = "x.lab.selector",
+    ylab = "Relative Gene Expression",
+    #ds = unique(dfDesign$dataseries),
+    ds.color = unique(dfDesign$dataseries_color),
+    subheadline = "\n (Category gene median)",
+    make.plots.individually = TRUE,
+    plot.individual.medians = FALSE,
+    plot.type = "pdf", # either pdf or jpeg
+    headline.font.size = 0.8,
+    make.plots = TRUE,
+    file.name.suffix = "",
+    figureCount = 1, 
+    displayLevel = 3,
+    smooth = 3
+) {
+    ## Create group list ##
+    #group.list <- createGroupList(dfDesign)
+    ## Reorder group List
+    plotList <- list()
+    chnkVec <- as.vector(NULL, mode = "character")
+    if (is.null(dfDesign)){
+        dfDesign <- obj@dfDesign
+    } 
+    
+    dfDesign[["sample.group.only"]] <- sapply(
+        dfDesign$sample.group, function(x) unlist(strsplit(x, "_"))[2]
+    )
+    
+    
+
+    for (i in 1:nrow(df.gmt)) {
+        ######################################################
+        ## Start creating one plot per gmt row/gene set
+        ## Set parameters for this plot
+        gene.vector <- as.vector(df.gmt[i, 3:ncol(df.gmt)])
+        gene.vector <- gene.vector[gene.vector != ""]
+        gene.vector <- gene.vector[!is.na(gene.vector)]
+        
+        
+        Ngenes <- length(gene.vector)
+        cat.name <- as.vector(df.gmt[i,1])
+        df.sel <- data.frame(df.data)
+        ## reduce to relevant columns ##
+        colTag <- paste0(names(df.sel)[grep(data.selector, colnames(df.sel))])
+        
+        sel.vec <-
+            append(obj@parameterList$geneIDcolumn, colTag)
+        ## Subset data table ##
+        df.sel <- unique(
+            df.sel[df.sel[,obj@parameterList$geneIDcolumn] %in% gene.vector, sel.vec]
+        )
+        
+        tag <- as.vector(df.gmt[i, 1])
+
+        #######################################################################
+        ## Calculate mData matrix                                            ##
+        df.temp <- df.sel
+        sample.group.vec <- as.vector(unlist(group.list))
+        
+        ## Calculate median for replicates ##
+        for (j in 1:length(sample.group.vec)) {
+            df.temp[[paste0(sample.group.vec[j], "_median")]] <- apply(
+                df.temp[,grep(paste0(sample.group.vec[j]) ,names(df.temp))],
+                1,
+                median
+            )
+        }
+        
+        ## Keep median genes only 
+        ## Keep median genes only ##
+        sel.vec <- append(
+            obj@parameterList$geneIDcolumn, 
+            names(df.temp)[grep("_median$", names(df.temp))]
+        )
+        df.temp2 <- unique(df.temp[,sel.vec])
+        n.genes.in.cat <- nrow(df.temp2)
+        m.data <- df.temp2
+        
+        ## row names
+        m.data[,obj@parameterList$geneIDcolumn][duplicated(m.data[,obj@parameterList$geneIDcolumn])] <- paste0(m.data[,obj@parameterList$geneIDcolumn][duplicated(m.data[,obj@parameterList$geneIDcolumn])], "_", 1:length(m.data[,obj@parameterList$geneIDcolumn][duplicated(m.data[,obj@parameterList$geneIDcolumn])]))
+        
+        row.names(m.data) <- m.data[,obj@parameterList$geneIDcolumn]
+        m.data[,obj@parameterList$geneIDcolumn] <- NULL
+        m.data <- data.matrix(m.data)
+        
+        df.order <- unique(dfDesign[,c("dataseries","sample.group", obj@parameterList$designTScol, "sample.group.only")])
+            
+        df.order <- df.order[order(df.order[,obj@parameterList$designTScol], decreasing = F),]
+        ordered.col.names <- paste0(df.order$sample.group ,"_median")
+        
+        m.data <- m.data[,ordered.col.names]
+        
+        ## Identify column to normalize too
+        normTag <- df.order[df.order$dataseries == names(group.list)[1], ]
+        normTag <- as.vector(normTag[1,"sample.group"])
+        normTag <- paste0(normTag, "_median")
+        ## Normalize to first column ##
+        divisor <- as.vector(m.data[,normTag])
+        divisor[divisor ==0] = 1
+        for (r in 1:ncol(m.data)){
+            m.data[,r] <- m.data[,r]/divisor
+        }
+        ## Calculate mData matrix                                            ##
+        #######################################################################
+        
+        #######################################################################
+        ## Calculate median for all samples                                  ##
+        for (k in 1:length(group.list)) {
+            
+            ## Create df plot ##
+            df.plot.temp <- data.frame(apply(m.data, 2, median), stringsAsFactors = FALSE)
+            df.plot.temp[["sample.group"]] <-
+                gsub("_median$", "", row.names(df.plot.temp))
+            
+            df.plot.temp <- df.plot.temp[grep(paste0(names(group.list)[k],"_"),df.plot.temp$sample.group),]
+            
+            names(df.plot.temp)[1] <- as.vector(names(group.list)[k])
+            row.names(df.plot.temp) <- gsub(paste0(as.vector(names(group.list)[k]), "_"), "", row.names(df.plot.temp))
+            
+            df.plot.temp[["sample.group"]] <-
+                gsub("_median$", "", row.names(df.plot.temp))
+            df.plot.temp <- df.plot.temp[,c("sample.group", as.vector(names(group.list)[k]))]
+            
+            names(df.plot.temp) <- gsub(as.vector(names(group.list)[k]),paste0(names(group.list)[k], "_", cat.name),names(df.plot.temp))
+        
+            
+            if (k == 1) {
+                df.plot <- df.plot.temp
+                mDataList <- list()
+                mDataList[[names(group.list)[k]]] <- m.data[,grep(paste0(names(group.list)[k], "_"), colnames(m.data))]
+            } else {
+                df.plot <-
+                    merge(df.plot, df.plot.temp, by.x = "sample.group", by.y = "sample.group")
+                mDataList[[names(group.list)[k]]] <- m.data[,grep(paste0(names(group.list)[k], "_"), colnames(m.data))]
+            }
+        }
+        
+        ## Done calculating median for all samples                           ##
+        #######################################################################
+        
+        ## make pdf file in CWD ##
+       
+        df.x.axis <- unique(dfDesign[,c("sample.group.only", obj@parameterList$designTScol)])
+        df.plot <-
+            merge(df.plot, df.x.axis, by.x = "sample.group", by.y = "sample.group.only")
+
+        
+        ## Plot based on df.plot ##
+        ## Create plotting parameters
+        filename <- paste0(df.gmt[i,1], ".pdf")
+        plot.headline <- paste0(gsub("_", " ", df.gmt[i,1]), " (", n.genes.in.cat,")")
+        plot.headline <- paste0(plot.headline, subheadline)
+        x.min <- min(df.plot[,obj@parameterList$designTScol])
+        x.max <- max(df.plot[,obj@parameterList$designTScol])
+        y.min <- 0.9 * min(data.matrix(df.plot[,grep(cat.name, names(df.plot))]))
+        y.max <- 1.1 * max(data.matrix(df.plot[,grep(cat.name, names(df.plot))]))
+
+        ## order df.plot ##
+        ## Add x.axis to df.plot ##
+        #df.x.axis <- unique(dfDesign[,c("sample.group.only", Obio@parameterList$designTScol)])
+        #df.plot <-
+        #    merge(df.plot, df.x.axis, by.x = "sample.group", by.y = "sample.group.only")
+
+        
+        #df.plot <- df.plot[order(df.plot$timepoint, decreasing = F),]
+
+        ## Create summary ##
+        df.add <- df.plot
+        df.add$timepoint <- NULL
+        
+        if (i ==1){
+            df.res <- df.add
+        } else {
+            df.add <- df.add[,c("sample.group", names(df.add)[grep(cat.name,names(df.add))])]
+            df.res <- merge(df.res, df.add, by.x = "sample.group", by.y = "sample.group")
+        }
+
+        if (obj@parameterList$designTScol != "timepoint"){
+          df.plot[["timepoint"]] <- df.plot[,obj@parameterList$designTScol]
+        }
+        
+        plotList[[tag]] <- ggplot(aes(x=timepoint), data=df.plot) + geom_hline(yintercept = 1, color = "black", size=0.5
+                    ) + geom_vline(xintercept = sort(unique(df.plot[, Obio@parameterList$designTScol])), color = "lightgrey", size=0.5, linetype='dashed') + theme_bw()
+        
+        for (m in 1:length(group.list)) {
+            ################################################
+            ## Set color parameters 
+            red <- col2rgb(ds.color[m])[1]/255
+                green <- col2rgb(ds.color[m])[2]/255
+                blue <- col2rgb(ds.color[m])[3]/255
+                
+                mPlot <- mDataList[[names(group.list)[m]]]
+                
+                col.names <- colnames(mPlot)[
+                    grep(
+                        "_median",
+                        colnames(mPlot)
+                    )
+                ]
+                 
+            m.plot <- mPlot[,col.names]
+            
+            ## done with colors
+            #################################################
+            
+            
+            ############################
+            ## One line per item      ##
+            if (plot.individual.medians){
+                for (d in 1:nrow(m.plot)){
+                    dftemp1 <- data.frame(timepoint=sort(df.plot[, Obio@parameterList$designTScol]), y = m.plot[d,])
+                    dftemp1 <- dftemp1[order(dftemp1$timepoint, decreasing = F),]
+                    lCol = rgb(red,green,blue,0.05, maxColorValue = 1)
+                plotList[[tag]] <- plotList[[tag]] + geom_smooth(data=dftemp1, aes(x=timepoint, y=y), col=lCol,se=FALSE, span=spanPar)
+                }
+                
+                 
+                
+                
+            }
+
+            ## Done one line per item ##
+            ############################
+
+            ############################
+            ## Plot median line       ##
+            
+            
+            ## Make ggplot ##
+            ## create x-y scatterplot ##
+            df.temp.plot <- df.plot
+            selVec <- c(
+                "sample.group",
+                Obio@parameterList$designTScol,
+                names(df.plot)[grep(paste0(names(group.list)[m],"_"), names(df.plot))]
+            )
+            
+            df.temp.plot <- df.plot[,selVec]
+            
+            df.temp.plot[["y"]] <- df.temp.plot[,grep(paste0(names(group.list)[m],"_"), names(df.temp.plot))]
+            lCol = rgb(red,green,blue,1, maxColorValue = 1)
+            
+            if (obj@parameterList$designTScol != "timepoint"){
+              df.temp.plot[["timepoint"]] <- df.temp.plot[,obj@parameterList$designTScol]
+            }
+            
+            plotList[[tag]] <- plotList[[tag]] + geom_line(
+                data=df.temp.plot, 
+                aes(x=timepoint, y=y), 
+                col=lCol,se=FALSE, 
+                span=spanPar
+            ) + geom_point(data=df.temp.plot, aes(x=timepoint, y=y), fill=lCol, shape=21
+            )
+            
+            plotList[[tag]] <- plotList[[tag]] +   theme(
+                axis.text.y   = element_text(size=8),
+                axis.text.x   = element_text(size=8),
+                axis.title.y  = element_text(size=8),
+                axis.title.x  = element_text(size=8),
+                axis.line = element_line(colour = "black"),
+                panel.border = element_rect(colour = "black", fill=NA, size=1),
+                plot.title = element_text(hjust = 0.5, size = 12
+            )
+            ) + labs(
+                title = paste0(gsub("_", " ", tag), " (",Ngenes,")"), 
+                y = "Relative Gene Exprssion", 
+                x=obj@parameterList$timecourse.units
+            ) + xlim(x.min, x.max
+            ) + ylim(y.min, y.max
+            ) 
+                
+            if (is.null(smooth)){
+                plotList[[tag]]  <- plotList[[tag]] + scale_x_discrete(breaks=as.factor(sort(unique(df.plot[,obj@parameterList$designTScol]))), labels=as.factor(sort(unique(df.plot[,obj@parameterList$designTScol]))))
+            }   else { 
+                plotList[[tag]] + scale_x_continuous(breaks=as.factor(sort(unique(df.plot[,obj@parameterList$designTScol]))), labels=as.factor(sort(unique(df.plot[,obj@parameterList$designTScol]))))
+            }
+            ## Done plot median line ##
+            ###########################
+        
+            ###################################################################
+            ## Add to documentation                                          ##
+            ###########################################################################
+            ## Save plot to file                                                     ##
+            FNbase <- paste0("Median.gene.plot",tag, VersionPdfExt)
+            FN <- paste0(Obio@parameterList$reportFigDir, FNbase)
+            FNrel <- paste0("report_figures/", FNbase)
+                
+            pdf(FN)
+                print(plotList[[tag]])
+            dev.off()
+            ##                                                                       ##
+            ###########################################################################
+                
+            catLink <- gsub("\\", "",as.vector(df.gmt[i,2]), fixed =T)
+            
+            #link <- paste0("An interactive heatmap depicting the genes in this category can be viewd [here](",catLink, "). ")
+            link <- ""
+            
+            
+                
+            figCap <- paste0(
+                "**Figure ",
+                figureCount,
+                ":** Median gene expression for ", tag,". Download a pdf of this figure [here](", FNrel, "). ", link
+            )
+            
+            
+            NewChnk <- paste0(
+                paste0(paste0(rep("#", displayLevel), collapse = "")," Median Plot ",tag," \n"),
+                "\n```{r ",tag, ", results='asis', echo=F, eval=TRUE, warning=FALSE, fig.cap='",figCap,"'}\n",
+                    "\n",
+                    "\n print(plotList[['",tag,"']])",
+                    "\n cat(  '\n')",
+                    "\n\n\n```\n"   
+            )
+            
+            ## Done documentatoin                                            ##
+            ###################################################################   
+    
+             
+        }
+        
+        figureCount <- figureCount + 1
+            
+        chnkVec <- c(
+                chnkVec,
+                NewChnk
+            )
+            
+        
+        ## End creating one plot per gmt
+        ###################################
+    } # end loopint through gmts
+    
+    
+        
+    returnList <- list(df.res = df.res, plotList=plotList, chnkVec = chnkVec)    
+    #return(df.res)
+    return(returnList)
+})
+
+## End method createMedianProfilePlots()                                   ##
+```
+
+```{r median_cor_dat, echo=F, eval=TRUE, warning=FALSE, result="asis"}
+###############################################################################
+## Make category plots ##
+setwd(Obio@parameterList$localWorkDir)
+
+dfDesign <- Obio@dfDesign
+dfDesign <- dfDesign
+dfDesign$sample.id <- paste0("norm_counts_", dfDesign$sample.id)
+
+dfDesign <- unique(dfDesign[,c("dataseries", "dataseries_color", Obio@parameterList$designTScol, "sample.id", "sample.group")])
+
+#dfDesign$dataseries_color <- "#009900"
+#dfDesign[dfDesign$dataseries == "KLF17", "dataseries_color"] <- "#FF0000"
+
+dfDesign <- dfDesign[order(dfDesign[,Obio@parameterList$designTScol], decreasing = F),]
+
+## Specifically in this project ##
+selVec2 <- c(Obio@parameterList$geneIDcolumn, names(Obio@databaseTable)[grep("norm_counts_", names(Obio@databaseTable))])
+dfTPM <- unique(Obio@databaseTable[,selVec2])
+names(dfTPM) <- gsub("_TPM", "", names(dfTPM))
+
+
+group.size <- length(unique(dfDesign$dataseries))
+
+pos <- grep("dataseries_colors", names(dfDesign))
+
+if (length(pos) > 0){
+    dfCols <- unique(dfDesign[,c("dataseries", "dataseries_color")])
+    groups <- dfCols$dataseries
+    group.cols <- dfCols$dataseries_color
+    
+} else {
+    groups <- unique(dfDesign$dataseries)
+    group.cols <- scales::hue_pal()(group.size)
+}
+
+
+
+
+
+df.median <- createMedianTsPlots(
+    obj = Obio,
+    dfDesign = dfDesign,
+    df.gmt = df.gmt,
+    group.list = createGroupList(dfDesign, dsOrderVec = groups),
+    ds.color = unique(group.cols),
+    df.data = Obio@databaseTable,
+    data.selector = "norm_counts_",
+    xlab = Obio@parameterList$timecourse.units,
+    ylab = "Relative Gene Expression",
+    #ds = unique(rev(dfDesign$dataseries)),
+    subheadline = "\n (median category gene profile)",
+    make.plots.individually = FALSE,
+    plot.individual.medians = FALSE,
+    make.plots = TRUE,
+    file.name.suffix = ".all.medians",
+    figureCount = figureCount,
+    displayLevel = 3,
+    smooth = NULL
+)
+
+chnkVec <- df.median$chnkVec
+plotList <- list()
+plotList <- df.median$plotList
+```
+
+```{r cat_plot_medians_plot, echo=TRUE, eval=TRUE, warning=FALSE, results="asis"}
+cat(paste(knit(text = chnkVec, quiet = T), collapse = '\n'))
+```
+
+## Correlation Cluster Table {.tabset .tabset-fade .tabset-pills}
+```{r, echo=T, eval=TRUE, warning=FALSE, result="asis",include = TRUE}
+library(DT)
+
+colorVec <- scales::hue_pal()(nrow(df.gmt))
+
+
+for (i in 1:nrow(df.gmt)){
+    tempVec <- as.vector(t(df.gmt[i,]))
+    tempVec <- unique(tempVec[tempVec != ""])
+    nameTag <- tempVec[1]
+    tempVec <- sort(tempVec[3:length(tempVec)])
+    catColor <- colorVec[i]
+    dfTemp <- data.frame(
+      Correlation_Cluster_Color =  rep(
+            paste0('<p style="background-color:',catColor,';text-align:center">_</p>'), 
+            length(tempVec)
+      ),
+    Correlation_Cluster_Name =  rep(
+           nameTag, 
+            length(tempVec)
+      ),
+    Correlation_Cluster_Genes = paste0(
+      '<a href="https://', urlString,'/',Obio@parameterList$project_id,'/gene-view?query=',tempVec, '&exact=true  target = "_blank">',tempVec,'</a>')
+    )
+    
+    dfTemp2 <- data.frame(
+        Correlation_Cluster =  rep(
+            gsub("_", " ", nameTag), 
+            length(tempVec)
+        ),
+        Correlation_Cluster_Genes = tempVec
+    )
+    
+    if (i ==1){
+        dfRes <- dfTemp
+        dfOut <- dfTemp2
+    } else {
+        dfRes <- rbind(dfRes, dfTemp)
+        dfOut <- rbind(dfOut, dfTemp2)
+    }
+}
+
+baseFN <- paste0(
+    Obio@parameterList$project_id, 
+    ".correlation.cluster.table.xlsx"
+)
+
+FNtabrel <- paste0("report_tables/", baseFN)
+tablink <- paste0('An Excel table containing the genes in each Pearson correlation cluster can be downloaded <a href = "',FNtabrel,'">here</a>. ')
+
+
+
+##############################################################################
+## Create marker gene table Excel                                           ##
+###############################################################################
+## Assemble DGE summary table                                                ##
+
+wb <- openxlsx::createWorkbook()
+hs1 <- openxlsx::createStyle(
+    fontColour = "#ffffff",
+    fgFill = "#000000",
+    halign = "CENTER",
+    textDecoration = "Bold"
+)
+sheetName <- "Correlation Clusters"
+  
+  openxlsx::addWorksheet(
+      wb, 
+      sheetName = sheetName
+  )
+  
+  
+  openxlsx::freezePane(wb, sheetName ,  firstActiveRow = 2)
+  openxlsx::writeData(wb, 1, dfOut, startRow = 1, startCol = 1, headerStyle = hs1)
+  ## Done adding to Excel workbook ##
+  
+## Save workbook ##
+baseFN <- paste0(
+   Obio@parameterList$project_id, 
+   ".Cluster.marker.table.xlsx"
+)
+FNtabrel <- paste0("report_tables/", baseFN)
+outPutFN <- paste0(
+     Obio@parameterList$reportTableDir,
+     baseFN
+)
+openxlsx::saveWorkbook(
+        wb,
+        outPutFN ,
+        overwrite = TRUE
+)
+    
+## Done creating marker gene table                                          ##
+##############################################################################
+
+tabLegend = paste0('**Table: ** Table showing the genes in each correlation cluster. An Excel version of this table can be downloaded <a href="',FNtabrel,'">here</a>')
+
+NewChnk <- paste0(
+        "### Correlation Cluster Gene Table", 
+        "\n```{r table, results='asis', echo=F, eval=TRUE, warning=FALSE, fig.cap='",
+        tabLegend,"'}\n",
+        "\n",
+        "\n DT::datatable(dfRes,rownames = FALSE,  escape = FALSE)",
+        "\n cat(  '\n')",
+        "\n\n\n```\n"   
+    )
+    
+chnkVec <- c(
+            # chnkVec,
+            NewChnk
+)
+
+```
+
+```{r, echo=TRUE, eval=TRUE, warning=FALSE, results="asis"}
+cat(paste(knit(text = chnkVec, quiet = T), collapse = '\n'))
+```
+
+## Category Enrichment Analysis on Gene Sets {.tabset .tabset-fade .tabset-pills}
+```{r make_enrichment_plots, echo=F, eval=TRUE, warning=FALSE, result="asis",include = FALSE}
+
+dfENRgmt <- df.gmt
+
+plotList <- list()
+chnkVec <- as.vector(NULL, mode = "character")
+
+for (j in 1:nrow(dfENRgmt)){
+
+    tag <- paste0("ENR_", j)
+    Cname <- gsub("_", " ", dfENRgmt[j,1])
+
+    geneVec <- as.vector(unique(dfENRgmt[j, 3:ncol(dfENRgmt)]))
+    geneVec <- geneVec[geneVec != ""]
+    geneVec <- na.omit(geneVec)
+
+    ## Translate
+    # dfAnnoSel <- unique(
+    #     dfAnno[dfAnno[,Obio@parameterList$primaryAlignmentGeneID] %in% geneVec, ]
+    # )
+    #
+    # posTestGeneSet <- unique(dfAnnoSel[,Obio@parameterList$geneIDcolumn])
+    #
+    posTestGeneSet <- geneVec
+
+    negTestGeneSet <- NULL
+
+    ## Get background gene set ##
+    #backgroundGeneVec <- row.names(OsC[["RNA"]]@counts)
+    if ((length(posTestGeneSet) >= 3) |(length(negTestGeneSet) >= 3)){
+        library(enrichR)
+        topMaxCat <- 20
+        dbs <- listEnrichrDbs()
+
+        dbs <- c("GO_Biological_Process_2017")
+
+
+        PosEnriched <- enrichr(posTestGeneSet, dbs)
+
+        for (i in 1:length(dbs)){
+            dfTemp <- PosEnriched[[dbs[i]]]
+
+            if (i ==1){
+                dfPosEnriched <- dfTemp
+            } else {
+                dfPosEnriched <- rbind(
+                    dfPosEnriched,
+                    dfTemp
+                )
+            }
+
+        }
+
+        dfPosEnriched[["log10FDR"]] <- -1*log10(dfPosEnriched$Adjusted.P.value)
+        dfPosEnriched <- dfPosEnriched[order(-dfPosEnriched$log10FDR),]
+        dfPosEnriched <- na.omit(dfPosEnriched)
+
+        ## Negative Side ##
+        # NegEnriched <- enrichr(negTestGeneSet, dbs)
+        #
+        # for (i in 1:length(dbs)){
+        #     dfTemp <- NegEnriched[[dbs[i]]]
+        #
+        #     if (i ==1){
+        #         dfNegEnriched <- dfTemp
+        #     } else {
+        #         dfNegEnriched <- rbind(
+        #             dfNegEnriched,
+        #             dfTemp
+        #         )
+        #     }
+        #
+        # }
+        #
+        #
+        # dfNegEnriched[["log10FDR"]] <- -1*log10(dfNegEnriched$Adjusted.P.value)
+        # dfNegEnriched <- dfNegEnriched[order(-dfPosEnriched$log10FDR),]
+        # dfNegEnriched <- na.omit(dfNegEnriched)
+        #
+        # dfNegSel <- dfNegEnriched
+        # if (nrow(dfNegSel) > topMaxCat){
+        #     dfNegSel <- dfNegSel[1:topMaxCat,]
+        # }
+
+        dfPosSel <- dfPosEnriched
+        if (nrow(dfPosSel) > topMaxCat){
+            dfPosSel <- dfPosSel[1:topMaxCat,]
+        }
+
+        if ((nrow(dfPosEnriched) > 0)){
+
+
+            #dfNegSel$log10FDR <- -1* dfNegSel$log10FDR
+
+            dfSel <- dfPosSel
+
+            dfSel <- na.omit(dfSel)
+            dfSel <- dfSel[order(dfSel$log10FDR),]
+            dfSel$log10FDR <- round(dfSel$log10FDR, 2)
+
+            dfSel[["Category"]] <- ""
+            dfSel[dfSel$log10FDR >= 0, "Category"] <- "Enr."
+            #dfSel[dfSel$log10FDR < 0, "Category"] <- "Depl."
+
+            for (k in 1:nrow(dfSel)){
+                if (nchar(dfSel[k, "Term"]) > 50 & length(grep("\\(GO", as.vector(dfSel[k, "Term"]))) > 0){
+                    part1 <- unlist(strsplit(as.vector(dfSel[k, "Term"]), "\\(GO"))[1]
+                    part1 <- substr(part1, 1, 45)
+                    part2 <- unlist(strsplit(as.vector(dfSel[k, "Term"]), "\\(GO"))[2]
+                    part2 <- paste0("\\(GO", part2)
+
+                    if (nchar(part1) > 40 ){
+                        dfSel[k, "Term"] <- paste0(part1, " \\n", part2)
+                    } else {
+                        dfSel[k, "Term"] <- paste0(part1, " ", part2)
+                    }
+                }
+            }
+
+
+            #dfSel$Term <- gsub("\\(GO", "\\\n\\(GO", dfSel$Term)
+
+            dfSel$Term <- factor(dfSel$Term, levels = unique(dfSel$Term))
+
+            #tag <- paste0("ENR_", j)
+            #Cname <- gsub("_", " ", dfENRgmt[j,1])
+
+            plotList[[tag]] <- ggplot(
+                data=dfSel, aes(x= Term, y=log10FDR, fill=Category, order=log10FDR)
+            ) + geom_bar(stat="identity", colour="black"
+            ) + coord_flip() +scale_fill_manual(values=c("grey"))  +  theme(
+                axis.text.y   = element_text(size=8),
+                axis.text.x   = element_text(size=8),
+                axis.title.y  = element_text(size=8),
+                axis.title.x  = element_text(size=8),
+                axis.line = element_line(colour = "black"),
+                panel.border = element_rect(colour = "black", fill=NA, size=1),
+                plot.title = element_text(hjust = 0.5, size = 12)
+            )  + labs(title = paste0("Cluster ", Cname," enriched genes") ,y = "-log10(FDR)", x = ""
+            ) + geom_hline(yintercept = c(-log10(0.05), log10(0.05)), color = "red", size=0.5, lty=2
+            ) + geom_hline(yintercept = 0, color = "black", size=0.5
+            ) + theme_bw()
+            cat("  \n")
+
+
+
+            ## Save to file ##
+            FNbase <- paste0("Cluster_", Cname,".enriched.genes", VersionPdfExt)
+            FN <- paste0(Obio@parameterList$reportFigDir, FNbase)
+            FNrel <- paste0("report_figures/", FNbase)
+
+
+            pdf(FN)
+            print(plotList[[paste0("ENR_", j)]])
+            dev.off()
+
+            ## Create R markdown chunk ##
+            # link <- paste0(
+            #     "https://",urlString,"/",
+            #     Obio@parameterList$project_id,
+            #     "/category-view?category_type=GO-BP"
+            # )
+
+
+            figLegend <- paste0(
+                "**Figure ",
+                figureCount,
+                "**: GO-BP category enrichment analysis for genes that are <font color = \\'yellow\\'>higher</font> and <font color = \\'blue\\'>lower</font> expressed in Cluster ",
+                Cname,
+                " as compared to all other clusters. Download a pdf of this figure [here](", FNrel, "). "
+
+#To view these gene sets in the context of your data, go to [CategoryView > GO-BP](",link,") and find the above categories using the search box."
+            )
+            figureCount <- figureCount + 1
+
+            NewChnk <- paste0(
+                "### ", Cname,
+                "\n```{r enrichr_cluster_",
+                j,", results='asis', echo=F, eval=TRUE, warning=FALSE, fig.cap='",
+                figLegend,"'}\n",
+                "\n",
+                "\n print(plotList[['",tag,"']])",
+                "\n cat(  '\n')",
+                "\n\n\n```\n"
+            )
+
+            chnkVec <- c(
+                chnkVec,
+                NewChnk
+            )
+        }
+
+    }
+
+}
+
+```
+
+```{r create-markdown-enrichment-chunks-dynamically, echo=T, eval=TRUE, warning=FALSE, results='asis'}
+###############################################################################
+## Do category enrichment on clusters                                        ##
+cat(paste(knit(text = chnkVec, quiet = T), collapse = '\n'))
+## Done doing enrichment on clusters                                         ##
+###############################################################################
+
+
+```

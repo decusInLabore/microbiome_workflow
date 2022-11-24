@@ -1,0 +1,211 @@
+<!-- Set PArameters Module -->
+<!-- Set the chnkPrefix to make all chunks unique in the overall folder -->
+```{r, echo=TRUE, eval=TRUE, warning=FALSE}
+chnkPrefix <- "load.files."
+VersionPdfExt <- VersionPdfExt <- paste0(".",chnkPrefix,"V", gsub("-", "", Sys.Date()), ".pdf")
+
+```
+
+## Data Preparation
+### Load Design File
+```{r, echo=TRUE, eval=TRUE, warning=FALSE, results="asis"}
+###############################################################################
+##                                                                           ##
+#baseDesignFN <- "/camp/stp/babs/working/boeings/Projects/boeings/stefan.boeing/474_bulk_RNAseq_pipeline/basedata/biologic/inputs/design.dge.lrt.definition.file.txt"
+ 
+designFN <- Obio@projectDetailList$designFN
+
+if (file.exists(designFN )){
+    dfBaseDesign <- read.delim(
+        designFN , 
+        sep = "\t",
+        stringsAsFactors = F
+    )    
+} else {
+    stop("No design file specified")
+}
+
+
+#dfDesign <- biologicSeqTools2::completeDesignBasedOnSampleID(dfBaseDesign)
+#dfDesign$sample.group <- dfDesign$sample.groups
+dfDesign$sample.groups <- NULL
+
+###############################################################################
+## Add sample group colors
+pos <- grep("sample.group_color", names(Obio@dfDesign))
+        
+if (length(pos) == 0){
+    sample.group <- unique(dfDesign$sample.group)
+    sample.group_color <- sample.group
+
+
+            #library(scales)
+    sample.group_color = scales::hue_pal()(length(sample.group_color))
+            #sample.group_color = c("#990000", "#009900")
+
+    dfGroupColors <- unique(data.frame(sample.group, sample.group_color))
+
+    dfDesign <- merge(dfDesign, dfGroupColors, by.x = "sample.group", "sample.group")
+
+}
+##
+###############################################################################
+
+pos <- grep("^timepoint$", names(dfDesign))
+
+if (length(pos) == 1){
+    library(dplyr)
+    dfDesign <- dfDesign %>%
+        mutate(timepoint = as.numeric(timepoint)) %>%
+        arrange(dataseries, timepoint, f_replicate, .by_group = TRUE)  
+
+    dfDesign <- data.frame(dfDesign)
+}
+
+Obio@dfDesign <- data.frame(dfDesign)
+
+##                                                                           ##
+###############################################################################
+
+###############################################################################
+## Add rsem counts                                                           ##
+
+# dfRSEM <- biologicSeqTools2::readAndPrepareCountMatrix(
+#     count.data.fn = RSEMcountDataFile ,
+#     string.to.be.deleted.in.raw.counts.columns = "",
+#     df.design = Obio@dfDesign
+# )
+
+
+rsemFN <- Obio@projectDetailList$countTableFN
+
+if (file.exists(rsemFN)){
+    dfRSEM <- read.delim(
+        rsemFN, 
+        sep = "\t",
+        stringsAsFactors = F
+    )    
+} else {
+    stop("No rsem file specified")
+}
+
+## Rename columns ##
+sampleNames <- gsub(
+    "^X",
+    "",
+    names(dfRSEM)[2:ncol(dfRSEM)]
+)
+
+dfRename <- unique(
+    Obio@dfDesign[,c("sampleID", "sample.id")]
+)
+
+rownames(dfRename) <- dfDesign$sampleID
+dfRename <- dfRename[sampleNames, ]
+dfRename[["rsem.sample.id"]] <- names(dfRSEM)[2:ncol(dfRSEM)]
+
+for (i in 1:nrow(dfRename)){
+    names(dfRSEM) <- gsub(
+        paste0("^", as.vector(dfRename[i, "rsem.sample.id"]), "$"),
+        as.vector(dfRename[i, "sample.id"]),
+        names(dfRSEM)
+    )
+}
+
+row.names(dfRSEM) <- dfRSEM$X
+
+dfRSEM$X <- NULL
+
+
+Obio@RSEMcountMatrix <- round(data.matrix(dfRSEM))
+##                                                                           ##
+###############################################################################
+
+###############################################################################
+##  Add TPM file                                                             ##
+
+tpmFN <- Obio@projectDetailList$TpmTableFN
+
+if (file.exists(tpmFN)){
+    dfTPM <- read.delim(
+        tpmFN, 
+        sep = "\t",
+        stringsAsFactors = F
+    )    
+} else {
+    stop("No tpm file specified")
+}
+
+
+## Rename columns ##
+sampleNames <- gsub(
+    "^X",
+    "",
+    names(dfTPM)[2:ncol(dfTPM)]
+)
+
+dfRename <- unique(
+    Obio@dfDesign[,c("sampleID", "sample.id")]
+)
+
+rownames(dfRename) <- dfDesign$sampleID
+dfRename <- dfRename[sampleNames, ]
+dfRename[["sampleID"]] <- names(dfTPM)[2:ncol(dfTPM)]
+
+for (i in 1:nrow(dfRename)){
+    names(dfTPM) <- gsub(
+        paste0("^", as.vector(dfRename[i, "sampleID"]), "$"),
+        as.vector(dfRename[i, "sample.id"]),
+        names(dfTPM)
+    )
+}
+
+Obio@dfTPM <- dfTPM
+
+# designSampleIDs <- c("ENSMUSG", unique(Obio@dfDesign$sample.id))
+# dfTPMSampleIDs <- unique(names(Obio@dfTPM))
+# checkTPM <- gsub("_TPM", "", dfTPMSampleIDs[dfTPMSampleIDs != "gene_id"])
+# check <- !(designSampleIDs %in% checkTPM)
+# 
+# if (sum(check) > 0){
+#   stop("Sample IDs in dfDesign don't match the column names in the count file or TPM file gene identifier column is not correct.")
+# }
+
+##                                                                           ##
+###############################################################################
+
+###############################################################################
+##                                                                           ##
+
+
+##                                                                           ##
+###############################################################################
+
+
+
+```
+
+
+
+### Load Model 
+```{r, echo=TRUE, eval=TRUE, warning=FALSE, results="asis"}
+
+#FN <- "design/dge.model.table.txt"
+modelFN <- Obio@projectDetailList$modelFN
+
+if (file.exists(modelFN)){
+    dfModel <- read.delim(
+        modelFN , 
+        sep = "\t",
+        stringsAsFactors = F
+    )    
+} else {
+    stop("No model file specified")
+}
+
+
+Obio@dfModel <- dfModel
+
+
+
+```

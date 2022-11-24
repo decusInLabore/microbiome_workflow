@@ -1,0 +1,65 @@
+###############################################################################
+## Download GEO data                                                         ##
+
+## If necessary, create a NCBI configuration file
+# Check for existince of a config file:
+# ml SRA-Toolkit
+# vdb-config -o n NCBI_SETTINGS
+
+# If you need to create or restore the config file:
+# vdb-config --restore-defaults
+
+# Run nextflow ftchngs:
+module purge
+
+module load Nextflow/21.10.3
+module load Singularity/3.6.4
+
+export NXF_WORK=`echo $PWD/work/ | sed 's:^/camp/stp/babs/working/:/camp/stp/babs/scratch/:'`
+if [ ! -d '$NXF_WORK' ]; then
+ln -s $NXF_WORK .
+fi
+
+export NXF_SINGULARITY_CACHEDIR=/camp/apps/misc/stp/babs/nf-core/singularity/fetchngs/1.7
+
+projectDir=/camp/stp/babs/working/boeings/Projects/boeings/stefan.boeing/491_demo_timecourse_GSE134515
+## Optional: update local nf-core/fetchngs installation
+# nextflow pull nf-core/fetchngs
+
+if [ ! -d "$projectDir/FASTQ_files" ]
+    mkdir $projectDir/FASTQ_files
+fi
+
+if [ ! -d "$projectDir/summary_pipeline_info" ]
+    mkdir $projectDir/summary_pipeline_info
+fi
+
+
+## Submit to cluster
+sbatch --time=12:00:00 --wrap '
+    nextflow run nf-core/fetchngs \
+      --input $projectDir/input_data/SRR_Acc_List.txt \
+      --outdir $projectDir/FASTQ_files \
+      --force_sratools_download \
+      -profile crick \
+      -r 1.7 \
+      -resume
+'
+--job-name=NFCR_F -c 12 --mem-per-cpu=7000 -o NFCF.slurm
+
+
+##                                                                           ##
+###############################################################################
+
+###############################################################################
+## Organise folders and clean up                                             ##
+
+rm -rf $projectDir/FASTQ_files/work
+mv $projectDir/FASTQ_files/fastq/* $projectDir/FASTQ_files/
+if [ ! -d "/path/to/dir" ]
+    mkdir
+fi
+
+cp $projectDir/FASTQ_files/samplesheet/id_mappings.csv $projectDir/input_data/
+##                                                                           ##
+###############################################################################

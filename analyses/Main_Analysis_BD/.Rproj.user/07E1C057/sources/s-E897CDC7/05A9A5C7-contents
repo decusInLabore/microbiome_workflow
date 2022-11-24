@@ -1,0 +1,527 @@
+<!-- Set PArameters Module -->
+<!-- Set the chnkPrefix to make all chunks unique in the overall folder -->
+```{r create_cell_cycle_reg_init, echo=TRUE, eval=TRUE, warning=FALSE}
+chnkPrefix <- "QC.A.perform.cell.cycle.reg."
+VersionPdfExt <- VersionPdfExt <- paste0(".",chnkPrefix,"V", gsub("-", "", Sys.Date()), ".pdf")
+
+```
+
+```{r createIntegrated, eval=TRUE, echo=T, results=F}
+###############################################################################
+## Get UMAP coordinates without regression                                   ##
+#vars.to.regress = "CC_Difference"
+
+SampleList <- createNormSampleList(
+    obj = Obio,
+    reduce = Obio@parameterList$debugReduce, # Default is NULL
+    vars.to.regress = NULL,
+    s.genes = NULL,
+    g2m.genes = NULL,
+    annotateCellCyclePhase = F
+)
+
+print(paste0("Cell Recuction: ", Obio@parameterList$debugReduce))
+lapply(SampleList, dim)
+## Done                                                                      ##
+###############################################################################
+
+
+###############################################################################
+## Integrate Datasets                                                        ##
+k.test <- min(as.vector(unlist(lapply(SampleList, ncol))))
+if (k.test < 200){
+    k.filter <- k.test-1
+} else {
+    k.filter <- 200
+}
+
+if (length(SampleList) > 1){
+    if (Obio@scDetailList$scIntegrationMethod == "SCT"){
+        
+        if (length(grep("scNintegrationFeatures", names(Obio@parameterList))) == 0){
+            Obio@parameterList$scNintegrationFeatures = 3000
+        }
+        
+        library(future)
+        options(future.globals.maxSize = 14000 * 1024^2)
+        plan("multiprocess", workers = 30)
+        
+        sample.features <- SelectIntegrationFeatures(
+            object.list = SampleList, 
+            nfeatures = Obio@parameterList$scNintegrationFeatures
+        )
+        SampleList <- PrepSCTIntegration(
+            object.list = SampleList, 
+            anchor.features = sample.features, 
+            verbose = FALSE
+        )
+        
+        sampleAnchors <- FindIntegrationAnchors(
+            object.list = SampleList, 
+            normalization.method = "SCT", 
+            anchor.features = sample.features, 
+            verbose = FALSE,
+            k.filter = k.filter
+        )
+        
+        OsC <- IntegrateData(
+            anchorset = sampleAnchors, 
+            normalization.method = "SCT", 
+            verbose = FALSE,
+            k.weight = k.filter
+        )
+        detach("package:future", unload=TRUE)
+        
+    } else {
+    
+        sampleAnchors <- FindIntegrationAnchors(
+            object.list = SampleList, 
+            dims = 1:Obio@parameterList$singleCellSeuratNpcs4PCA,
+            k.filter = k.filter
+        ) 
+
+
+        OsC <- IntegrateData(
+            #features.to.integrate = geneIntersectVec,
+            anchorset = sampleAnchors, 
+            dims = 1:Obio@parameterList$singleCellSeuratNpcs4PCA,
+            k.weight = k.filter
+        )
+    }
+    Obio@dataTableList$referenceList[["sampleAnchors"]] <- as.vector(sort(sampleAnchors@anchor.features))
+} else {
+    OsC <- SampleList[[1]]
+}
+
+Idents(OsC) <- factor(Idents(OsC), levels = names(Obio@sampleDetailList))
+OsC@meta.data$sampleID <- factor(OsC@meta.data$sampleID, levels = names(Obio@sampleDetailList))
+
+OsC@meta.data[["cellID"]] <- row.names(OsC@meta.data)
+
+## UMAP ##
+DefaultAssay(OsC) <- "RNA"
+
+
+OsC <- FindVariableFeatures(
+    object = OsC,
+    selection.method = 'vst', 
+    nfeatures = Obio@parameterList$NtopGenes
+)
+
+if (length(Obio@sampleDetailList) > 1){
+    DefaultAssay(OsC) <- "integrated"
+} else {
+    Obio@parameterList$singleCellClusterString <- gsub("integrated", "RNA", Obio@parameterList$singleCellClusterString)
+}
+
+
+# Run the standard workflow for visualization and clustering
+## This will scale on the most variable features only
+OsC <- ScaleData(
+    OsC, 
+    verbose = FALSE,
+    vars.to.regress = NULL
+)
+
+OsC <- RunPCA(
+    OsC, 
+    npcs = Obio@parameterList$singleCellSeuratNpcs4PCA, verbose = FALSE
+)
+# t-SNE and Clustering
+
+## Add PCA clusters to data collection ##
+
+
+OsC <- RunUMAP(OsC, reduction = "pca", dims = 1: Obio@parameterList$singleCellSeuratNpcs4PCA)
+
+OsC <- FindNeighbors(OsC, reduction = "pca", dims = 1: Obio@parameterList$singleCellSeuratNpcs4PCA)
+
+OsC <- FindClusters(OsC, resolution = Obio@parameterList$singleCellClusterParameter)
+
+coord <- data.frame(OsC@reductions$umap@cell.embeddings)
+names(coord) <- paste0(names(coord), "_Without_Regression")
+coord[["cellID"]] <- row.names(coord)
+coord <-coord[coord$cellID %in% OsC@meta.data$cellID, ]
+
+dfMeta <- OsC@meta.data
+dfMeta[["cellID"]] <- row.names(dfMeta)
+dfMeta <- dfMeta[,c("cellID", "seurat_clusters")]
+dfMeta$seurat_clusters <- as.character(dfMeta$seurat_clusters)
+dfMeta$seurat_clusters <- paste0("No_Regression_C", dfMeta$seurat_clusters)
+names(dfMeta) <- gsub("seurat_clusters", "ClusterName_No_Regression", names(dfMeta))
+
+
+dfMeta <- merge(
+    dfMeta,
+    coord,
+    by.x = "cellID",
+    by.y = "cellID",
+    all =TRUE
+)
+
+dfMeta[is.na(dfMeta)] <- ""
+
+
+dfRes <- dfMeta
+
+
+rm(OsC)
+
+## Done get UMAP coordinates full cell cycle regression regression           ##
+###############################################################################
+
+###############################################################################
+## Get UMAP coordinates with Phase regression                                ##
+
+# vars.to.regress = "Phase"
+## 09/2021 changed to:
+vars.to.regress <- c("S_Score", "G2M_Score")
+
+SampleList <- createNormSampleList(
+    obj = Obio,
+    reduce = Obio@parameterList$debugReduce, # Default is NULL
+    vars.to.regress = vars.to.regress,
+    s.genes = s.genes,
+    g2m.genes = g2m.genes,
+    annotateCellCyclePhase = T
+)
+
+print(paste0("Cell Recuction: ", Obio@parameterList$debugReduce))
+lapply(SampleList, dim)
+## Done                                                                      ##
+###############################################################################
+
+
+###############################################################################
+## Integrate Datasets                                                        ##
+
+
+
+if (length(SampleList) > 1){
+    if (Obio@parameterList$scIntegrationMethod == "SCT"){
+        
+        if (length(grep("scNintegrationFeatures", names(Obio@parameterList))) == 0){
+            Obio@parameterList$scNintegrationFeatures = 3000
+        }
+        
+        library(future)
+        options(future.globals.maxSize = 14000 * 1024^2)
+        plan("multiprocess", workers = 30)
+        
+        sample.features <- SelectIntegrationFeatures(
+            object.list = SampleList, 
+            nfeatures = Obio@parameterList$scNintegrationFeatures
+        )
+        SampleList <- PrepSCTIntegration(
+            object.list = SampleList, 
+            anchor.features = sample.features, 
+            verbose = FALSE
+        )
+        
+        sampleAnchors <- FindIntegrationAnchors(
+            object.list = SampleList, 
+            normalization.method = "SCT", 
+            anchor.features = sample.features, 
+            verbose = FALSE,
+            k.filter = k.filter
+        )
+        
+        OsC <- IntegrateData(
+            anchorset = sampleAnchors, 
+            normalization.method = "SCT", 
+            verbose = FALSE,
+            k.weight = k.filter
+        )
+        detach("package:future", unload=TRUE)
+        
+    } else {
+    
+        sampleAnchors <- FindIntegrationAnchors(
+            object.list = SampleList, 
+            dims = 1:Obio@parameterList$singleCellSeuratNpcs4PCA,
+            k.filter = k.filter
+        ) 
+
+
+        OsC <- IntegrateData(
+            #features.to.integrate = geneIntersectVec,
+            anchorset = sampleAnchors, 
+            dims = 1:Obio@parameterList$singleCellSeuratNpcs4PCA,
+            k.weight = k.filter
+        )
+    }
+    Obio@dataTableList$referenceList[["sampleAnchors"]] <- as.vector(sort(sampleAnchors@anchor.features))
+} else {
+    OsC <- SampleList[[1]]
+}
+
+Idents(OsC) <- factor(Idents(OsC), levels = names(Obio@sampleDetailList))
+OsC@meta.data$sampleID <- factor(OsC@meta.data$sampleID, levels = names(Obio@sampleDetailList))
+
+OsC@meta.data[["cellID"]] <- row.names(OsC@meta.data)
+
+## UMAP ##
+DefaultAssay(OsC) <- "RNA"
+
+
+OsC <- FindVariableFeatures(
+    object = OsC,
+    selection.method = 'vst', 
+    nfeatures = 2000
+)
+
+if (length(Obio@sampleDetailList) > 1){
+    DefaultAssay(OsC) <- "integrated"
+} else {
+    Obio@parameterList$singleCellClusterString <- gsub("integrated", "RNA", Obio@parameterList$singleCellClusterString)
+}
+
+
+# Run the standard workflow for visualization and clustering
+## This will scale on the most variable features only
+OsC <- ScaleData(
+    OsC, 
+    verbose = FALSE,
+    vars.to.regress = vars.to.regress
+)
+
+OsC <- RunPCA(
+    OsC, 
+    npcs = Obio@parameterList$singleCellSeuratNpcs4PCA, verbose = FALSE
+)
+# t-SNE and Clustering
+
+## Add PCA clusters to data collection ##
+
+
+OsC <- RunUMAP(OsC, reduction = "pca", dims = 1:Obio@parameterList$singleCellSeuratNpcs4PCA)
+
+OsC <- FindNeighbors(OsC, reduction = "pca", dims = 1:Obio@parameterList$singleCellSeuratNpcs4PCA)
+
+OsC <- FindClusters(OsC, resolution = Obio@parameterList$singleCellClusterParameter)
+
+coord <- data.frame(OsC@reductions$umap@cell.embeddings)
+names(coord) <- paste0(names(coord), "_CellCycle_Regression")
+coord[["cellID"]] <- row.names(coord)
+coord <-coord[coord$cellID %in% OsC@meta.data$cellID, ]
+
+dfMeta <- OsC@meta.data
+dfMeta[["cellID"]] <- row.names(dfMeta)
+dfMeta <- dfMeta[,c("cellID", "seurat_clusters")]
+dfMeta$seurat_clusters <- as.character(dfMeta$seurat_clusters)
+dfMeta$seurat_clusters <- paste0("Cell_Cycle_Reg_C", dfMeta$seurat_clusters)
+names(dfMeta) <- gsub("seurat_clusters", "ClusterNames_CellCycle_Regression", names(dfMeta))
+
+
+dfMeta <- merge(
+    dfMeta,
+    coord,
+    by.x = "cellID",
+    by.y = "cellID",
+    all =TRUE
+)
+
+dfMeta[is.na(dfMeta)] <- ""
+
+rm(OsC)
+
+dfRes <- merge(
+    dfRes, 
+    dfMeta, 
+    by.x = "cellID",
+    by.y = "cellID",
+    all = TRUE
+)
+dfRes[is.na(dfRes)] <- 0
+## Done get UMAP coordinates with full cell cycle regression                 ##
+###############################################################################
+
+###############################################################################
+## Get UMAP coordinates with Phase regression                                ##
+vars.to.regress = "CC_Difference"
+
+SampleList <- createNormSampleList(
+    obj = Obio,
+    reduce = Obio@parameterList$debugReduce, # Default is NULL
+    vars.to.regress = vars.to.regress,
+    s.genes = s.genes,
+    g2m.genes = g2m.genes,
+    annotateCellCyclePhase = T
+)
+
+print(paste0("Cell Recuction: ", Obio@parameterList$debugReduce))
+lapply(SampleList, dim)
+## Done                                                                      ##
+###############################################################################
+
+
+###############################################################################
+## Integrate Datasets                                                        ##
+if (length(SampleList) > 1){
+    if (Obio@parameterList$scIntegrationMethod == "SCT"){
+        
+        if (length(grep("scNintegrationFeatures", names(Obio@parameterList))) == 0){
+            Obio@parameterList$scNintegrationFeatures = 3000
+        }
+        
+        library(future)
+        options(future.globals.maxSize = 14000 * 1024^2)
+        plan("multiprocess", workers = 30)
+        
+        sample.features <- SelectIntegrationFeatures(
+            object.list = SampleList, 
+            nfeatures = Obio@parameterList$scNintegrationFeatures
+        )
+        SampleList <- PrepSCTIntegration(
+            object.list = SampleList, 
+            anchor.features = sample.features, 
+            verbose = FALSE
+        )
+        
+        sampleAnchors <- FindIntegrationAnchors(
+            object.list = SampleList, 
+            normalization.method = "SCT", 
+            anchor.features = sample.features, 
+            verbose = FALSE,
+            k.filter = k.filter
+        )
+        
+        OsC <- IntegrateData(
+            anchorset = sampleAnchors, 
+            normalization.method = "SCT", 
+            verbose = FALSE,
+            k.weight = k.filter
+        )
+        detach("package:future", unload=TRUE)
+        
+    } else {
+    
+        sampleAnchors <- FindIntegrationAnchors(
+            object.list = SampleList, 
+            dims = 1:Obio@parameterList$singleCellSeuratNpcs4PCA,
+            k.filter = k.filter
+        ) 
+
+
+        OsC <- IntegrateData(
+            #features.to.integrate = geneIntersectVec,
+            anchorset = sampleAnchors, 
+            dims = 1:Obio@parameterList$singleCellSeuratNpcs4PCA,
+            k.weight = k.filter
+        )
+    }
+    Obio@dataTableList$referenceList[["sampleAnchors"]] <- as.vector(sort(sampleAnchors@anchor.features))
+} else {
+    OsC <- SampleList[[1]]
+}
+
+Idents(OsC) <- factor(Idents(OsC), levels = names(Obio@sampleDetailList))
+OsC@meta.data$sampleID <- factor(OsC@meta.data$sampleID, levels = names(Obio@sampleDetailList))
+
+OsC@meta.data[["cellID"]] <- row.names(OsC@meta.data)
+
+## UMAP ##
+DefaultAssay(OsC) <- "RNA"
+
+
+OsC <- FindVariableFeatures(
+    object = OsC,
+    selection.method = 'vst', 
+    nfeatures = 2000
+)
+
+if (length(Obio@sampleDetailList) > 1){
+    DefaultAssay(OsC) <- "integrated"
+} else {
+    Obio@parameterList$singleCellClusterString <- gsub("integrated", "RNA", Obio@parameterList$singleCellClusterString)
+}
+
+
+# Run the standard workflow for visualization and clustering
+## This will scale on the most variable features only
+OsC <- ScaleData(
+    OsC, 
+    verbose = FALSE,
+    vars.to.regress = vars.to.regress
+)
+
+OsC <- RunPCA(
+    OsC, 
+    npcs = Obio@parameterList$singleCellSeuratNpcs4PCA, 
+    verbose = FALSE
+)
+# t-SNE and Clustering
+
+## Add PCA clusters to data collection ##
+
+
+OsC <- RunUMAP(
+    OsC, 
+    reduction = "pca", 
+    dims = 1:Obio@parameterList$singleCellSeuratNpcs4PCA
+)
+
+OsC <- FindNeighbors(
+    OsC, reduction = "pca", 
+    dims = 1:Obio@parameterList$singleCellSeuratNpcs4PCA
+)
+
+OsC <- FindClusters(OsC, resolution = Obio@scDetailList$singleCellClusterParameter)
+
+coord <- data.frame(OsC@reductions$umap@cell.embeddings)
+names(coord) <- paste0(names(coord), "_G2M_S_Regression")
+coord[["cellID"]] <- row.names(coord)
+coord <-coord[coord$cellID %in% OsC@meta.data$cellID, ]
+
+dfMeta <- OsC@meta.data
+dfMeta[["cellID"]] <- row.names(dfMeta)
+dfMeta <- dfMeta[,c("cellID", "seurat_clusters")]
+dfMeta$seurat_clusters <- as.character(dfMeta$seurat_clusters)
+dfMeta$seurat_clusters <- paste0("G2M_S_Reg_C", dfMeta$seurat_clusters)
+names(dfMeta) <- gsub("seurat_clusters", "ClusterNames_G2M_S_Regression", names(dfMeta))
+
+
+dfMeta <- merge(
+    dfMeta,
+    coord,
+    by.x = "cellID",
+    by.y = "cellID",
+    all =TRUE
+)
+
+dfMeta[is.na(dfMeta)] <- ""
+
+rm(OsC)
+
+dfRes <- merge(
+    dfRes, 
+    dfMeta, 
+    by.x = "cellID",
+    by.y = "cellID",
+    all = TRUE
+)
+dfRes[is.na(dfRes)] <- 0
+
+#row.names(dfRes) <- dfRes$cellID
+#dfRes$cellID <- NULL
+
+tempDir <- paste0(Obio@parameterList$localWorkDir,"temp")
+            if(!dir.exists(tempDir)){
+                dir.create(tempDir)
+            }
+
+FN <- paste0(Obio@parameterList$localWorkDir, "/temp/UMAP.regression.coordinates.txt")
+write.table(
+    dfRes,
+    FN,
+    row.names = F, 
+    sep = "\t"
+)
+
+
+## Done get UMAP coordinates with full cell cycle regression                 ##
+###############################################################################
+
+```
+
+

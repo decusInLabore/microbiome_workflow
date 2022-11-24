@@ -1,0 +1,594 @@
+<!-- Set Parameters Module -->
+<!-- Set the chnkPrefix to make all chunks unique in the overall folder -->
+```{r, echo=FALSE, eval=TRUE, warning=FALSE, results=F}
+chnkPrefix <- "edit.RSEM.tpm."
+VersionPdfExt <- VersionPdfExt <- paste0(".",chnkPrefix,"V", gsub("-", "", Sys.Date()), ".pdf")
+
+
+figureCount <- Obio@parameterList[["figureCount"]]
+db.pwd <- Obio@dbDetailList[["db.pwd"]]
+```
+
+
+
+# DEseq2 Differential Gene Expression Analysis
+```{r, echo=TRUE, eval=TRUE, warning=FALSE, results="hide", message=FALSE}
+
+###############################################################################
+## Create dfSummary                                                          ##
+
+
+
+dfDGE <- Obio@DEseq2contrastTable
+## Temporary Fix ##
+## Remove empty pase means
+rmVec <- grep("lg2BaseMean$", names(dfDGE))
+if (length(rmVec) > 0){
+    dfDGE <- dfDGE[,-rmVec]
+}
+## lg2 base mean ##
+lg2Vec <- grep("lg2BaseMean", names(dfDGE))
+if (length(lg2Vec ) > 0){
+    for (i in 1:length(lg2Vec ))
+    dfDGE[,lg2Vec[i]] <- log2(dfDGE[,lg2Vec[i]])
+}
+
+dfLRT <- Obio@DEseq2LRTtable
+
+dfPCA <- Obio@dfPCAgenes
+
+
+df.summary <- dfDGE
+
+###############################################################################
+## Calculate correlations                                                    ##
+## Adding annotation ##
+dfAnno <- unique(Obio@dfGeneAnnotation[,c(Obio@parameterList$primaryAlignmentGeneID, Obio@parameterList$geneIDcolumn)])
+dfAnno <- dfAnno[dfAnno[,Obio@parameterList$primaryAlignmentGeneID] %in% df.summary[,Obio@parameterList$primaryAlignmentGeneID],]
+
+
+pos <- grep("corGeneVec", names(Obio@parameterList))
+
+if (length(pos) == 0){
+    Obio@parameterList[["corGeneVec"]] <- NULL
+}
+
+if (!is.null(Obio@parameterList$corGeneVec)){
+    hVec <- Obio@parameterList$corGeneVec
+    dfAnnoCor <- dfAnno[dfAnno[,Obio@parameterList$geneIDcolumn] %in% hVec, ]
+
+    Obio@parameterList$corGeneVec <- as.vector(dfAnnoCor[,Obio@parameterList$geneIDcolumn])
+}
+
+if (exists("dfAnnoCor")){
+    if (nrow(dfAnnoCor) > 0){
+        dfTPM <- Obio@dfTPM
+        names(dfTPM) <- gsub("^X$", Obio@parameterList$primaryAlignmentGeneID, names(dfTPM))
+        names(dfTPM) <- gsub("^gene_id$", Obio@parameterList$primaryAlignmentGeneID, names(dfTPM))
+
+        names(dfTPM) <- paste0("norm_counts_", names(dfTPM ))
+        names(dfTPM) <- gsub(
+        paste0(
+          "norm_counts_", Obio@parameterList$primaryAlignmentGeneID),
+          Obio@parameterList$primaryAlignmentGeneID,
+          names(dfTPM)
+        )
+        
+        row.names(dfTPM) <- dfTPM[,Obio@parameterList$primaryAlignmentGeneID]
+        dfTPM[,Obio@parameterList$primaryAlignmentGeneID] <- NULL
+        for (k in 1:nrow(dfAnnoCor)){
+            ###############################################################################
+            ## do correlation analysis                                                   ##
+    
+            pValueCor = rep(1, nrow(dfTPM))
+            corCoef = rep(0, nrow(dfTPM))
+            cor.method = "pearson"
+    
+            geneSel <- as.vector(dfAnnoCor[k, Obio@parameterList$primaryAlignmentGeneID])
+            pattern <- as.numeric(dfTPM[geneSel, ])
+    
+            #Find best correlation with kinase expression
+            print("Starting to calculate correlations...")
+            for (i in 1:nrow(dfTPM)){
+                samplePattern <- as.numeric(t(dfTPM[i,]))
+    
+                if (sum(samplePattern) != 0){
+                    cor.test.result = cor.test(samplePattern, pattern, method=cor.method)
+                    pValueCor[i] = cor.test.result$p.value
+                    corCoef[i] = cor.test.result$estimate
+                }
+                if (i%%1000 == 0){
+                    print(i)
+                }
+            }
+            print("...done.")
+    
+            dfTPM[["pValueCor"]] <- pValueCor
+            dfTPM[["corCoef"]] <- corCoef
+    
+            dfTPM <- dfTPM[order(dfTPM$corCoef, decreasing = TRUE),]
+            dfTempRes <- dfTPM
+            dfTempRes[[Obio@parameterList$primaryAlignmentGeneID]] <- row.names(dfTempRes)
+            dfTempRes <- dfTempRes[,c("corCoef", Obio@parameterList$primaryAlignmentGeneID)]
+            names(dfTempRes) <- gsub("corCoef", paste0("corCoef_", as.vector(dfAnnoCor[k, Obio@parameterList$geneIDcolumn])), names(dfTempRes))
+    
+            if (k==1){
+                dfTRes <- dfTempRes
+            } else {
+                dfTRes <- merge(
+                    dfTRes,
+                    dfTempRes,
+                    by.x = Obio@parameterList$primaryAlignmentGeneID,
+                    by.y = Obio@parameterList$primaryAlignmentGeneID,
+                    all =TRUE
+                )
+                dfTRes[is.na(dfTRes)] <- 0
+            }
+    
+    
+            ## Done correlation analysis                                                 ##
+            ###############################################################################
+        }
+    
+    
+        Obio@dataTableList[["geneCorTables"]] <- dfTRes
+    }
+}
+
+## Done calculate correlations                                               ##
+###############################################################################
+
+
+
+
+###############################################################################
+## Adding annotation to df.summary                                           ##
+dfNormCounts <- Obio@DESeqNormReadCountsTable
+names(dfNormCounts) <- paste0("DEseq2NormalizedReadCounts_", names(dfNormCounts))
+dfNormCounts[[Obio@parameterList$primaryAlignmentGeneID]] <- row.names(dfNormCounts)
+
+dfTPM <- Obio@dfTPM
+
+## In case other names are used as col names
+names(dfTPM) <- gsub("^X$", Obio@parameterList$primaryAlignmentGeneID, names(dfTPM))
+names(dfTPM) <- gsub("^gene_id$", Obio@parameterList$primaryAlignmentGeneID, names(dfTPM))
+
+names(dfTPM) <- paste0("norm_counts_", names(dfTPM ))
+names(dfTPM) <- gsub(
+    paste0("norm_counts_", Obio@parameterList$primaryAlignmentGeneID),
+    Obio@parameterList$primaryAlignmentGeneID,
+    names(dfTPM)
+)
+
+## Done adding annotation                                                    ##
+###############################################################################
+
+if (nrow(dfLRT) > 0){
+  df.summary <- merge(
+      df.summary,
+      dfLRT,
+      by.x = Obio@parameterList$primaryAlignmentGeneID,
+      by.y = Obio@parameterList$primaryAlignmentGeneID,
+      all = TRUE
+  )
+  df.summary[is.na(df.summary)] <- 0
+}
+
+df.summary <- merge(
+    df.summary,
+    dfTPM,
+    by.x = Obio@parameterList$primaryAlignmentGeneID,
+    by.y = Obio@parameterList$primaryAlignmentGeneID,
+    all = TRUE
+)
+df.summary[is.na(df.summary)] <- 0
+
+
+df.summary <- merge(
+    df.summary,
+    dfNormCounts,
+    by.x = Obio@parameterList$primaryAlignmentGeneID,
+    by.y = Obio@parameterList$primaryAlignmentGeneID,
+    all = TRUE
+)
+df.summary[is.na(df.summary)] <- 0
+
+df.summary <- merge(
+    df.summary,
+    dfPCA,
+    by.x = Obio@parameterList$primaryAlignmentGeneID,
+    by.y = Obio@parameterList$primaryAlignmentGeneID,
+    all = TRUE
+)
+df.summary[is.na(df.summary)] <- 0
+
+###############################################################################
+## Add correlation bits, if they exist                                       ##
+
+## Check gene level correlations ##
+if (length(grep("geneCorTables", names(Obio@dataTableList))) > 0){
+    dfAdd <- Obio@dataTableList$geneCorTables
+    names(dfAdd)[grep("corCoef_", names(dfAdd))] <- paste0("add_venn_X_", names(dfAdd)[grep("corCoef_", names(dfAdd))])
+
+    df.summary <- merge(
+      df.summary,
+      dfAdd,
+      by.x = Obio@parameterList$primaryAlignmentGeneID,
+      by.y = Obio@parameterList$primaryAlignmentGeneID,
+      all = TRUE
+    )
+    df.summary[is.na(df.summary)] <- 0
+}
+
+## Check ts correlations.
+if (length(grep("tsCorTables", names(Obio@dataTableList))) > 0){
+    dfAdd <- Obio@dataTableList$tsCorTables
+
+    df.summary <- merge(
+      df.summary,
+      dfAdd,
+      by.x = Obio@parameterList$primaryAlignmentGeneID,
+      by.y = Obio@parameterList$primaryAlignmentGeneID,
+      all = TRUE
+    )
+    df.summary[is.na(df.summary)] <- 0
+}
+
+## Done with correlations                                                    ##
+###############################################################################
+
+
+
+## Adding annotation ##
+dfAnno <- Obio@dfGeneAnnotation
+dfAnno <- dfAnno[dfAnno[,Obio@parameterList$primaryAlignmentGeneID] %in% df.summary[,Obio@parameterList$primaryAlignmentGeneID],]
+
+df.summary <- merge(
+    df.summary,
+    dfAnno,
+    by.x = Obio@parameterList$primaryAlignmentGeneID,
+    by.y = Obio@parameterList$primaryAlignmentGeneID,
+    all = TRUE
+)
+df.summary[is.na(df.summary)] <- 0
+
+df.summary[df.summary[,Obio@parameterList$geneIDcolumn] == 0, Obio@parameterList$geneIDcolumn] <- df.summary[df.summary[,Obio@parameterList$geneIDcolumn] == 0, Obio@parameterList$primaryAlignmentGeneID]
+
+## Done creating dfSummary                                                   ##
+###############################################################################
+
+###############################################################################
+## Add Variation measures                                                    ##
+
+if (!is.null(Obio@dataTableList$dfRowVar)){
+    dfVarMeasures <- Obio@dataTableList$dfRowVar
+
+    df.summary <- merge(
+        df.summary,
+        dfVarMeasures,
+        by.x = Obio@parameterList$primaryAlignmentGeneID,
+        by.y = Obio@parameterList$primaryAlignmentGeneID,
+        all = TRUE
+    )
+    df.summary[is.na(df.summary)] <- 0
+
+}
+
+
+## Done with variations                                                      ##
+###############################################################################
+
+
+###############################################################################
+# Upload to website                                                           #
+###############################################################################
+#library(SBwebtools)
+
+
+###############################################################################
+# Prepare database table                                                      #
+###############################################################################
+
+###############################################################################
+## Default Heatmap option A Ntop most variable genes                         ##
+
+###############################################################################
+## Option A Select most variable genes                                       ##
+
+df.summary[["logFC_cut_off"]] <- 0
+
+rowSelVec <- as.vector(
+    dfSel[1:Obio@parameterList$NtopGenes,Obio@parameterList$primaryAlignmentGeneID]
+)
+df.summary[df.summary[, Obio@parameterList$primaryAlignmentGeneID] %in% rowSelVec, "logFC_cut_off"] <- 1
+
+
+## Select for heatmap ##
+# df.summary <- selectHeatmapGenes(
+#     dfData = df.summary,
+#     cutOff = 1.3,
+#     zeroOneCol = "logFC_cut_off",
+#     selCol = "contrast_1_lg10p",
+#     geneID = Obio@parameterList$geneIDcolumn
+# )
+
+## Select for heatmap all genes with a TPM row sum of 2 or higher ##
+# df.summary[["logFC_cut_off"]] <- 0
+# df.summary[,"logFC_cut_off"] <- rowSums(df.summary[,grep("norm_counts_", names(df.summary))])
+# nSamples <- length(unique(dfDesign$sample.id))
+# df.summary[,"logFC_cut_off"] <- ifelse(df.summary$logFC_cut_off >= 5*nSamples, 1, 0)
+
+## Select for heatmap: abs change of at least 0.5 in any contrast ##
+
+###############################################################################
+## Create main database table                                                ##
+
+Obio@databaseTable <- biologicSeqTools2::datatable.to.website.ptm(
+    df.data = df.summary,
+    gene.id.column = Obio@parameterList$primaryAlignmentGeneID,
+    heatmap.genes = "",
+    n.cluster.genes = 2000,
+    count.data = TRUE,
+    logFC.cut.off = 1,
+    #use.logFC.columns.for.heatmap = FALSE,
+    selector4heatmap.cols = "norm_counts",
+    heatmap.preprocessing = "lg2.row.avg", # possible: "lg2", "lg2.row.avg", "none"
+    hm.cut.off = 4,
+    n.hm.cluster = 10,
+    count.cut.off.filter = 0
+)
+
+
+## Done creating main database table                                         ##
+###############################################################################
+
+
+###############################################################################
+## Create Excel output files                                                 ##
+
+addedOutputCols <- names(Obio@databaseTable)[grep("corCoef", names(Obio@databaseTable))]
+if (Obio@parameterList$geneIDcolumn != "hgnc_symbol"){
+    addedOutputCols <- c(
+        addedOutputCols,
+        "hgnc_symbol"
+    )
+}
+
+createAndFormatExcelOutputFiles(
+    obj = Obio,
+    metaCoreCountFilter = 1,
+    customOutputCols = NULL,
+    addedOutputCols = addedOutputCols
+)
+
+## Done creating Excel output files                                          ##
+###############################################################################
+
+###############################################################################
+## Add Covar figure                                                          ##
+
+# figureCol is DEseq2RV or CoVar
+figureCol <- "DEseq2RV"
+
+
+
+dfDat <- unique(
+    Obio@databaseTable[,c(Obio@parameterList$geneIDcolumn, "DEseq2RV", "CoVar")]
+)
+dfDat[["Var"]] <- dfDat[,figureCol]
+dfDat <- dfDat[order(dfDat$Var, decreasing = TRUE),]
+
+dfDat <- dfDat[dfDat$Var > 0, ]
+dfDat[["CoVarOrder"]] <- 1:nrow(dfDat)
+
+# Obio@plotCollection[["CoVar"]] <- ggplot(
+#     data=dfDat,
+#     aes(x=CoVarOrder, y=Var)
+# ) + geom_line( ) + geom_vline(xintercept = Obio@parameterList$NtopGene, col="red"
+# ) +  theme(
+#     axis.text.y   = element_text(size=8),
+#     axis.text.x   = element_text(size=8),
+#     axis.title.y  = element_text(size=8),
+#     axis.title.x  = element_text(size=8),
+#     axis.line = element_line(colour = "black"),
+#     panel.border = element_rect(colour = "black", fill=NA, size=1),
+#     plot.title = element_text(hjust = 0.5, size = 12)
+# ) + labs(title = paste0("Variation Seen Across all Genes")
+# )
+
+## Done adding Covar figure                                                  ##
+###############################################################################
+
+###############################################################################
+## Add additional plot columns from database                                 ##
+
+## Done adding additional plot columns                                       ##
+###############################################################################
+
+
+
+###############################################################################
+# Do GSEA                                                                     #
+###############################################################################
+
+database.table2 <- Obio@databaseTable
+rmVec <- c(
+     #grep("contrast_2", names(database.table2))
+     grep("contrast_P", names(database.table2)),
+     grep("contrast_L", names(database.table2)),
+     grep("LRT_", names(database.table2)),
+     grep("PCA_", names(database.table2)),
+     grep("norm_counts_", names(database.table2)),
+     grep("intercept_", names(database.table2)),
+     grep("r2_P", names(database.table2)),
+     grep("DEseq2NormalizedReadCounts", names(database.table2)),
+     grep("p_value_P", names(database.table2)),
+     grep("lg2_avg_", names(database.table2))
+)
+
+if (length(rmVec) > 0){
+     database.table2 <- database.table2[,-rmVec]
+}
+# #
+# ## Remove unnecessary columns, if needed ##
+# #
+# ## Create GSEA rank files ##
+biologicSeqTools2::create.gsea.rnk.files(
+     Obio@parameterList$localWorkDir,
+     df.dataTable = database.table2,
+     GSEA.colum.type = "_logFC_",
+     gene.symbol.column.name = "hgnc_symbol"
+ )
+# #
+# # ## Remove last character from file ##
+# # #truncate -s -2 file
+# # #sed '$d' file # remove last line
+# #
+# # ## Remove last character from file ##
+# # #truncate -s -2 file
+# # #sed '$d' file # remove last line
+# #
+# ## Function to create gmt file ##
+
+if (!is.null(Obio@parameterList$GSEAtables)){
+  tables <- Obio@parameterList$GSEAtables
+} else {
+  tables <- c(
+    "mysigdb_h_hallmarks",
+    "mysigdb_c5_BP" #,
+    #Obio@parameterList$lab.categories.table
+  )
+}
+
+
+# #
+dfRefGmt <- create.gmt.file.from.ref.data.table(
+     host = Obio@dbDetailList$host,
+     dbname = "reference_categories_db_new",
+     dataTable = tables,
+     pwd = db.pwd,
+     user=Obio@dbDetailList$db.user,
+     gene.id.column = "hgnc_symbol"
+ )
+
+
+###############################################################################
+## If dfRefGmt is very large, reduce to most variable genes                  ##
+## Define relevant genes for selection ##
+relevant.genes <- as.vector(
+  unique(
+    Obio@databaseTable[Obio@databaseTable$cluster_order, "hgnc_symbol"]
+  )
+)
+
+lr <- length(relevant.genes)
+
+if (nrow(dfRefGmt) > 10000 & lr > 100){
+  TF <- apply(dfRefGmt[,3:ncol(dfRefGmt)], 1, function(x) sum(as.vector(x) %in% relevant.genes) )
+  selector <- 0
+  selVec <- TF >= selector
+  
+  while(sum(selVec) > 10000){
+    
+    selVec <- TF > selector
+    
+    selector <- selector + 1
+    
+    
+    if (selector > 199){
+      stop()
+    }
+  }
+  
+  dfRefGmt <- dfRefGmt[selVec, ]
+  print(paste0(selector, " gene cut-off set for dfRefGmt. ", sum(selVec), " categories used for GSEA per sample."))
+  
+  
+}
+
+
+
+## Done                                                                      ##
+###############################################################################
+
+# #
+# # ###############################################################################
+# # ## Save gmt file                                                             ##
+# # #"/camp/stp/babs/working/boeings/Projects/reference_data/GSEA.gmt.files/20160508.rna.seq.txn.analysis.gmt"
+# #
+localGmtDir <- paste0(
+    Obio@parameterList$localWorkDir,
+    "GSEA/"
+)
+
+if (!exists(localGmtDir)){
+  dir.create(localGmtDir)
+}
+
+#
+gmtDir<- paste0(
+    Obio@parameterList$workdir,
+    "GSEA/"
+)
+
+gmtFileName <- paste0(
+    Obio@parameterList$project_id,
+    ".",
+    "projectGmtFile.gmt"
+)
+
+dfRefGmt <- dfRefGmt[!(duplicated(dfRefGmt[,1])),]
+
+write.table(
+    dfRefGmt,
+    paste0(localGmtDir, gmtFileName),
+    col.names = FALSE,
+    row.names = FALSE,
+    sep="\t",
+    quote = F
+)
+# #
+contrasts <- names(database.table2)[grep("logFC",names(database.table2))]
+contrasts <- contrasts[contrasts != "logFC_cut_off"]
+contrasts
+
+GSEAfn <- paste0(
+    Obio@parameterList$localWorkDir,
+    "/GSEA/GSEAcommands.sh"
+)
+sink(GSEAfn)
+
+cat("module load Java/1.8.0_131");cat("\n");cat("\n")
+for (i in 1:length(contrasts)){
+    gmtFile <- paste0(gmtDir, gmtFileName)
+    contrastNo <- unlist(strsplit(contrasts[i], "_"))[2]
+    nTopPlots <- 50
+    GSEAdir <- paste0(Obio@parameterList$workdir, "GSEA")
+    rnkFile <- paste0(GSEAdir, "/",contrasts[i],".rnk")
+
+    gseaCMD <- paste0(
+        "sbatch --time=03:00:00 --wrap '",
+        "module load Java/1.8.0_131;",
+        "java -Xmx2512m -cp /camp/stp/babs/working/boeings/Projects/software/gsea-3.0.jar xtools.gsea.GseaPreranked -gmx ",
+        gmtFile,
+        " -rnk ",
+        rnkFile,
+        " -rpt_label ",
+        "contrast_",
+        contrastNo,
+        "_rnaSeqTxnTest",
+        " -out ",
+        GSEAdir,
+        " -collapse false -mode Max_probe -norm meandiv -nperm 1000 -scoring_scheme classic -include_only_symbols true -make_sets true -plot_top_x ",
+        nTopPlots,
+        " -rnd_seed timestamp -set_max 2500 -set_min 10 -zip_report false -gui false",
+        "' --job-name='GSEA_",contrastNo,"' --mem=50G -o GSEA_",contrastNo,".slurm >> commands.txt"
+    )
+    cat(gseaCMD);cat("\n");cat("\n");
+
+
+}
+sink()
+#
+```
+

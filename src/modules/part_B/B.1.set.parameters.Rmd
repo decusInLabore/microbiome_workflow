@@ -1,0 +1,99 @@
+<!-- Set Parameters Module -->
+<!-- Set the chnkPrefix to make all chunks unique in the overall folder -->
+```{r set_parameters_init, echo=FALSE, eval=TRUE, warning=FALSE}
+chnkPrefix <- "partB.set.parameters."
+VersionPdfExt <- VersionPdfExt <- paste0(".",chnkPrefix,"V", gsub("-", "", Sys.Date()), ".pdf")
+
+```
+
+## Data Preparation
+
+```{r B_set_directories, echo=FALSE, eval=TRUE, warning=FALSE, results="asis"}
+## Set project specific parameters ##
+Obio <- setMountingPoint(Obio)
+Obio <- setAnalysisPaths(Obio)
+Obio <- setCrickGenomeAndGeneNameTable(Obio)
+Obio <- createAnalysisFolders(
+    Obio
+)
+Obio <- setDataBaseParameters(Obio)
+
+## This can be upgraded to web retrieval of annotation data 
+Obio <- addGeneAnnotation(Obio)
+
+ 
+## Create shiny path for figure outputs ##           
+shinyURL <- paste0(
+    "https://",
+    shinyBaseServerURL,
+    "/shiny/boeings/",
+    Obio@parameterList$project_id,
+    "_app/"
+)            
+        
+    
+
+## Create outputfolders ##
+# if (!dir.exists(paste0(Obio@parameterList$localWorkDir,Obio@parameterList$project_id))){
+#     dir.create(paste0(Obio@parameterList$localWorkDir,Obio@parameterList$project_id))
+# }
+
+Obio@parameterList[["html_local"]] <- paste0(workdir, "html_local/")
+
+if (!dir.exists(Obio@parameterList[["html_local"]])){
+    dir.create(Obio@parameterList[["html_local"]])
+}
+
+Obio@parameterList[["reportFigDir"]] <- paste0(Obio@parameterList$html_local, "report_figures/")
+if (!dir.exists(Obio@parameterList$reportFigDir)){
+    dir.create(Obio@parameterList$reportFigDir)
+}
+
+pdfTemp <- paste0(Obio@parameterList$reportFigDir, "temp.pdf")
+
+Obio@parameterList[["reportTableDir"]] <- paste0(Obio@parameterList$html_local, "report_tables/")
+if (!dir.exists(Obio@parameterList$reportTableDir)){
+    dir.create(Obio@parameterList$reportTableDir)
+}
+
+
+## Create data dir
+Obio@parameterList[["data_dir"]] <- paste0(Obio@parameterList$localWorkDir, "data/")
+
+if (!dir.exists(Obio@parameterList$data_dir)){
+    dir.create(Obio@parameterList$data_dir)
+}
+
+
+## Set default for database connections ##
+pos <- grep("^host$", names(Obio@dbDetailList))
+if (length(pos) ==0 ){
+    Obio@dbDetailList$host <- NULL
+    
+    if (is.null(Obio@dbDetailList)){
+        Obio@dbDetailList = list("host" = NULL)
+    }
+    
+    upload.results.to.database <- FALSE
+    print("No database server provided. upload.results.to.database set to FALSE")
+    
+}
+
+if (!is.null(Obio@dbDetailList$host)){
+    if (Obio@dbDetailList$host == "10.27.241.234"){
+        urlString <- "biologic.thecrick.org"
+    } else {
+        urlString <- "biologic.crick.ac.uk"
+    }    
+} else {
+    urlString <- ""
+}
+
+
+##                                                                           ##
+###############################################################################
+
+```
+
+
+

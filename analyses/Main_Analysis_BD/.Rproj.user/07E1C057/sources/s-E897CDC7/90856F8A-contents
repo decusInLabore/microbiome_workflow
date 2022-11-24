@@ -1,0 +1,28 @@
+###############################################################################
+
+
+## Creating NF-core bulk RNA-Seq cript                                       ##
+
+
+module purge
+module load Nextflow/21.10.3
+module load Singularity/3.6.4
+
+export NXF_WORK=`echo $PWD/work/ | sed 's:^/camp/stp/babs/working/:/camp/stp/babs/scratch/:'`
+if [ ! -d '$NXF_WORK' ]; then
+    ln -s $NXF_WORK .
+fi
+export NXF_SINGULARITY_CACHEDIR=/camp/apps/misc/stp/babs/nf-core/singularity/rnaseq/3.6/
+
+sbatch --time=12:00:00 --wrap ' \
+nextflow run nf-core/rnaseq \
+-r 3.6 \
+--input /camp/stp/babs/working/boeings/Projects/boeings/stefan.boeing/491_demo_timecourse_GSE134515/scripts/bulkRNAseq_workflow/design/NFcore.settings.csv \
+--outdir /camp/stp/babs/working/boeings/Projects/boeings/stefan.boeing/491_demo_timecourse_GSE134515/workdir \
+-profile crick \
+--aligner star_rsem \
+--email stefan.boeing@crick.ac.uk \
+--fasta /camp/svc/reference/Genomics/babs/mus_musculus/ensembl/GRCm38/release-89/genome/Mus_musculus.GRCm38.dna_sm.toplevel.fa \
+--gtf /camp/svc/reference/Genomics/babs/mus_musculus/ensembl/GRCm38/release-89/gtf/Mus_musculus.GRCm38.89.rnaseqc.gtf \
+-resume
+' --job-name=NFCR_GSE134515 -c 12 --mem-per-cpu=7000 -o NFC.slurm

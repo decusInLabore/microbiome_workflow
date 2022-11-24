@@ -1,0 +1,13 @@
+run_accession	sample.id	f_Genotype_1	f_Genotype_2	sample.group	dataseries
+SRR8927058	Wt_Wt_rep1	Wt	Wt	Wt_Wt	Wt
+SRR8927059	Wt_Wt_rep2	Wt	Wt	Wt_Wt	Wt
+SRR8927060	Wt_Wt_rep3	Wt	Wt	Wt_Wt	Wt
+SRR8927055	Wt_HPV8_rep1	Wt	HPV8	Wt_HPV8	Wt
+SRR8927056	Wt_HPV8_rep2	Wt	HPV8	Wt_HPV8	Wt
+SRR8927057	Wt_HPV8_rep3	Wt	HPV8	Wt_HPV8	Wt
+SRR8927052	Act_Wt_rep1	Act	Wt	Act_Wt	Act
+SRR8927053	Act_Wt_rep2	Act	Wt	Act_Wt	Act
+SRR8927054	Act_Wt_rep3	Act	Wt	Act_Wt	Act
+SRR8927049	Act_HPV8_rep1	Act	HPV8	Act_HPV8	Act
+SRR8927050	Act_HPV8_rep2	Act	HPV8	Act_HPV8	Act
+SRR8927051	Act_HPV8_rep3	Act	HPV8	Act_HPV8	Act

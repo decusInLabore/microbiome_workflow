@@ -1,0 +1,10 @@
+sample,fastq_1,fastq_2,strandedness
+A_WT_1,/camp/stp/sequencing/inputs/instruments/fastq/171201_K00102_0171_BHLW2VBBXX/fastq/Ocasio_180917/OCA530A1_S26_L004_R1_001.fastq.gz,,reverse
+A_WT_2,/camp/stp/sequencing/inputs/instruments/fastq/171201_K00102_0171_BHLW2VBBXX/fastq/Ocasio_180917/OCA530A2_S27_L004_R1_001.fastq.gz,,reverse
+A_WT_3,/camp/stp/sequencing/inputs/instruments/fastq/171201_K00102_0171_BHLW2VBBXX/fastq/Ocasio_180917/OCA530A3_S28_L004_R1_001.fastq.gz,,reverse
+A_WTCtrl_1,/camp/stp/sequencing/inputs/instruments/fastq/171201_K00102_0171_BHLW2VBBXX/fastq/Ocasio_180917/OCA530A10_S35_L004_R1_001.fastq.gz,,reverse
+A_WTCtrl_2,/camp/stp/sequencing/inputs/instruments/fastq/171201_K00102_0171_BHLW2VBBXX/fastq/Ocasio_180917/OCA530A11_S36_L004_R1_001.fastq.gz,,reverse
+A_WTCtrl_3,/camp/stp/sequencing/inputs/instruments/fastq/171201_K00102_0171_BHLW2VBBXX/fastq/Ocasio_180917/OCA530A12_S37_L004_R1_001.fastq.gz,,reverse
+A_E4_1,/camp/stp/sequencing/inputs/instruments/fastq/171201_K00102_0171_BHLW2VBBXX/fastq/Ocasio_180917/OCA530A4_S29_L004_R1_001.fastq.gz,,reverse
+A_E4_2,/camp/stp/sequencing/inputs/instruments/fastq/171201_K00102_0171_BHLW2VBBXX/fastq/Ocasio_180917/OCA530A5_S30_L004_R1_001.fastq.gz,,reverse
+A_E4_3,/camp/stp/sequencing/inputs/instruments/fastq/171201_K00102_0171_BHLW2VBBXX/fastq/Ocasio_180917/OCA530A6_S31_L004_R1_001.fastq.gz,,reverse

@@ -1,0 +1,30 @@
+<!-- Set PArameters Module -->
+<!-- Set the chnkPrefix to make all chunks unique in the overall folder -->
+```{r, echo=FALSE, eval=TRUE, warning=FALSE}
+chnkPrefix <- "B3.alignment."
+VersionPdfExt <- VersionPdfExt <- paste0(".",chnkPrefix,"V", gsub("-", "", Sys.Date()), ".pdf")
+
+```
+
+
+# Alignment Summary
+For a summary of the alignment parameters, review the QC tab. 
+
+The following tables form the basis for this analysis: 
+
+<div class = "grey">
+```{r, echo=F, eval=T, warning=FALSE,comment=NA}
+            
+            twoString <- paste0(
+                "Read count table: \n", Obio@parameterList$countTableFN,
+                "\n",
+                "TPM table: \n",  Obio@parameterList$TpmTableFN,
+                "\n"
+            )
+            
+            cat(twoString)
+            
+            
+```
+ </div>
+

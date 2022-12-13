@@ -32,7 +32,7 @@ nextflow run nf-core/ampliseq \
     --outdir "../workdir/results" \
     --ignore_failed_trimming \
     --untilQ2import \
-    -resume' --job-name=NFCR_F -c 12 --mem-per-cpu=7000 -o NFCF.slurm
+    -resume
  ```
  This run mainly is to determine good values for the --trunclenf and --trunclenr parameters in the next step. Leaving away the --untilQ2import flag will run the pipeline up until the data visualization module. 
  
